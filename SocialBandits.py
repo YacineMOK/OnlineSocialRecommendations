@@ -142,3 +142,24 @@ class SocialBandit():
         """
 	return np.sum(self.expectedRewardsViaA(A,V))
         
+    def generateRandomRewards(self,X):
+	"""Produce rewards with noise"""
+        return self.expectedRewardsViaX(X)+np.random.randn(self.n)*np.sigma
+
+    def generateZ(self,X):
+        return np.matmul(X.T,X)
+
+    def updateZ(self,Z,X):
+        return Z+np.matmul(X.T,X)
+
+    def generateXTr(self,X,r):
+        return np.matmul(X.T,r)
+
+
+    def updateXTr(self,XTr,X,r):
+        return XTr+np.matmul(X.T,r)
+
+
+    def regress(self,Z,XTr):
+        """Obtain solution"""
+        
