@@ -29,16 +29,15 @@ def testExpectedRewards(n, d, alpha = 0.2):
 
     r1 = sb.expectedRewardsViaX(X)
     r2 = sb.expectedRewardsViaA(A,V)
-    r3 = sb.expectedRewardsViaA2(A,V)
     print r1
     print r2
-    print r3
-    print "Reward vector difference is:",np.linalg.norm(r1-r2),np.linalg.norm(r2-r3),np.linalg.norm(r3-r1)
+    print "Reward vector difference is:",np.linalg.norm(r1-r2)
 
     rtot1= sb.expectedTotalRewardViaL(L,V)
     rtot2= sb.expectedTotalRewardViaX(X)
+    rtot3= sb.expectedTotalRewardViaA(A,V)
 
-    print "Total reward difference is:",np.abs(rtot1-rtot2)
+    print "Total reward differences are: |r1-r2|=%d,|r2-r3|=%d,|r3-r1|=%d" % (np.abs(rtot1-rtot2),np.abs(rtot2-rtot3),np.abs(rtot3-rtot1))
 
 
 class SocialBandit():
@@ -113,30 +112,11 @@ class SocialBandit():
 
     def expectedRewardsViaA(self,A,V):
         """ Compute the expected reward at each node via:
-            r(t) = <U0,A.T * V> * 1
-            where <.> denotes the Hadamard (entrywise) product
-        """
-        Z=np.matmul(A.T,V)
-        topped = np.multiply(self.U0,Z)
-        print A.T
-        print V
-        print Z
-        print self.U0
-        print topped
-        return np.sum(topped,1) #computes row-wise sum
-
-    def expectedRewardsViaA2(self,A,V):
-        """ Compute the expected reward at each node via:
-            r(t) = <A *U0, V> * 1
-            where <.> denotes the Hadamard (entrywise) product
+            r(t) = <A * U0, V> * 1
+            where <.> denotes the Hadamard (entry-wise) product
         """
         Z=np.matmul(A,self.U0)
         topped = np.multiply(Z,V)
-        print A
-        print self.U0
-        print Z
-        print V
-        print topped
         return np.sum(topped,1) #computes row-wise sum
  
 
@@ -155,4 +135,10 @@ class SocialBandit():
             rtot(t) = 1 * X(t) * u0
         """
 	return np.sum(self.expectedRewardsViaX(X))
-     
+
+    def expectedTotalRewardViaA(self,A,V):
+        """ Compute the total expected reward  via:
+            rtot(t) = 1 * X(t) * u0
+        """
+	return np.sum(self.expectedRewardsViaA(A,V))
+        
