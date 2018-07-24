@@ -104,7 +104,7 @@ class SocialBandit():
            U0: inherent interest matrix 
            sigma:  noise standard deviation σ, added when generating rewards
            lam: regularization parameter λ used in ridge regression
-           constraints: type of constraints, e.g., l2ball, finiteset, etc.
+           constraints: type of constraints, e.g., L2Ball, finiteset, etc.
         """
         self.P = P
         self.alpha = alpha
@@ -116,7 +116,7 @@ class SocialBandit():
         I = np.identity(self.n)
         self.Ainf = self.alpha*inv(I-self.beta*P)
 
-    def generateSet(self,M):
+    def generateFiniteSet(self,M):
         self.set = np.random.randn(M,self.d)
         self.M = M
  
@@ -285,7 +285,7 @@ class RandomBanditFiniteSet(SocialBandit):
          return np.reshape(np.concatenate(recs),(self.n,self.d))
            
 
-class LinRel1(SocialBandit):
+class LinREL1(SocialBandit):
     def __init__(self,P, U0, alpha=0.2, sigma = 0.0001, lam = 0.001,delta = 0.01,):
         SocialBandit.__init__(self,P, U0, alpha,sigma,lam)
         self.delta = delta
@@ -311,7 +311,7 @@ class LinRel1(SocialBandit):
                 optu = u
         return self.vec2mat(optv)
 
-class LinRel1FiniteSet(LinRel1):
+class LinREL1FiniteSet(LinREL1):
      def getoptv(self,z):
          options = self.set
          Z = self.vec2mat(z)
@@ -329,15 +329,15 @@ class LinRel1FiniteSet(LinRel1):
     
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description = 'Social Bandit Simulator',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('strategy',help="Recommendation strategy.",choices= ["RandomBandit","LinREL1","LinRel2""LinUCB"]) 
+    parser.add_argument('strategy',help="Recommendation strategy.",choices= ["RandomBanditL2Ball","RandomBanditFiniteSet","LinREL1L2Ball","LinREL1FiniteSet","LinREL2","LinUCB"]) 
     parser.add_argument('--n',default=100,type=int,help ="Number of users") 
     parser.add_argument('--d',default=10,type=int,help ="Number of dimensions") 
     parser.add_argument('--alpha',default=0.05,type=float, help='α value. β is set to 1 - α ')
     parser.add_argument('--sigma',default=0.05,type=float, help='Standard deviation σ of noise added to responses ')
     parser.add_argument('--lam',default=0.01,type=float, help='Regularization parameter λ used in ridge regression')
     parser.add_argument('--delta',default=0.05,type=float, help='δ value. Used by LinREL ')
+    parser.add_argument('--M',default=100,type=float, help='Size M of finite set. Used by all finite set strategies. ')
     parser.add_argument('--maxiter',default=50,type=int, help='Maximum number of iterations')
-    parser.add_argument('--constraints',help="Recommendation set.",choices= ["l2ball","finite"]) 
     parser.add_argument('--debug',default='INFO', help='Verbosity level',choices=['DEBUG','INFO','WARNING','ERROR','CRITICAL'])
     parser.add_argument('--logfile',default='SB.log',help='Log file')
     parser.set_defaults(screen_output=True)
@@ -366,10 +366,13 @@ if __name__=="__main__":
     P = generateP(args.n)
     U0 = np.random.randn(args.n,args.d)
 
-    if args.strategy=="LinREL1":
+    if "LinREL" in args.strategy:
         sb = BanditClass(P,U0,args.alpha,args.sigma,args.lam,args.constraints,args.delta)
     else:
         sb = BanditClass(P,U0,args.alpha,args.sigma,args.lam,args.constraints)
+
+    if "Finite" in args.strategy:
+        sb.generateFiniteSet(args.M)
 
     sb.run(args.maxiter)
     
