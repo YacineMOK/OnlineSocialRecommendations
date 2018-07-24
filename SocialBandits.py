@@ -8,13 +8,23 @@ from time import time
 import argparse
 
 
+
+logger = logging.getLogger('Social Bandits')
+
+def clearFile(file):
+    """Delete all contents of a file"""	
+    with open(file,'w') as f:
+   	f.write("")
+
 def generateP(n):
+    """Generate an n x n matrix P """
     P=np.random.random((n,n))
     Prowsums = np.reshape(np.sum(P,1),(n,1))
     M = 1./np.tile(Prowsums,(1,n))
     return np.multiply(P,M)
      
 def testExpectedRewards(n, d, alpha = 0.2):
+    """ Test if different methods for computing rewards are correct """
     P = generateP(n)
     U0 = np.random.randn(n,d)
     V = np.random.randn(n,d)
@@ -40,6 +50,7 @@ def testExpectedRewards(n, d, alpha = 0.2):
     print "Total reward differences are: |r1-r2|=%f,|r2-r3|=%f,|r3-r1|=%f" % (np.abs(rtot1-rtot2),np.abs(rtot2-rtot3),np.abs(rtot3-rtot1))
 
 def testRandomStrategy(n, d, t = 5,alpha = 0.2,sigma=0.001,lam = 0.00001):
+    """ Test estimation and random strategy. It is better to test this from the main program instead"""
     P = generateP(n)
     U0 = np.random.randn(n,d)
     
@@ -66,12 +77,13 @@ def testRandomStrategy(n, d, t = 5,alpha = 0.2,sigma=0.001,lam = 0.00001):
         A = sb.updateA(A)
 
 class SocialBandit():
-    def __init__(self,P, U0, alpha=0.2, sigma = 0.0):
+    def __init__(self,P, U0, alpha=0.2, sigma = 0.0001, lam = 0.001):
         """Initialize social bandit object. Arguments are:
            P: social influence matrix
            alpha: probability α that inherent interests are used
            U0: inherent interest matrix 
            sigma:  noise standard deviation σ, added when generating rewards
+           lambda: regularization parameter used in ridge regression
         """
         self.P = P
         self.alpha = alpha
@@ -79,6 +91,7 @@ class SocialBandit():
         self.U0 = U0
         self.n,self.d = U0.shape
         self.sigma = sigma
+        self.lam = lam
         I = np.identity(self.n)
         self.Ainf = self.alpha*inv(I-self.beta*P)
 
@@ -195,3 +208,83 @@ class SocialBandit():
         """Solve least squares problem min_u||X*u-r||_2^2"""
         return solveLinear(Z,XTr)
         
+
+    def recommend(self):
+        pass
+  
+    def initializeRun(self):
+        Z = self.lam*np.identity(self.n*self.d)
+        XTr = np.zeros(self.n*self.d)
+        return (Z,XTr)
+
+    def run(self,t=10):
+        self.Z,self.XTr=self.initializeRun()
+
+        self.u0 = sb.mat2vec(self.U0)
+        self.A=sb.generateA()
+        i = 0
+        while i<t:
+            V = self.recommend();
+            X = sb.generateX(self.A,V)
+	
+            r = sb.generateRandomRewards(X)     
+        
+            self.Z = sb.updateZ(self.Z,X)
+            self.XTr = sb.updateXTr(self.XTr,X,r)
+
+            self.u0est = sb.regress(self.Z,self.XTr)
+            udiff = np.linalg.norm(self.u0est-self.u0)
+            Adiff = np.linalg.norm(np.reshape(self.A-self.Ainf,self.n*self.n))
+            logger.info("It. %d: ||u_0-\hat{u}_0||_2 = %f, ||A-Ainf||= %f" % (i,udiff,Adiff))
+
+            i += 1
+            self.A = sb.updateA(self.A)
+
+
+class RandomBandit(SocialBandit):
+     def recommend(self):
+        """ Recommend a random V"""
+        return np.random.randn(self.n,self.d)    
+
+
+
+if __name__=="__main__":
+    parser = argparse.ArgumentParser(description = 'Social Bandit Simulator',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('strategy',help="Recommendation strategy.",choices= ["RandomBandit","LinREL","LinUCB"]) 
+    parser.add_argument('--n',default=100,type=int,help ="Number of users") 
+    parser.add_argument('--d',default=10,type=int,help ="Number of dimensions") 
+    parser.add_argument('--alpha',default=0.05,type=float, help='α value. β is set to 1 - α ')
+    parser.add_argument('--sigma',default=0.05,type=float, help='Standard deviation σ of noise added to responses ')
+    parser.add_argument('--lam',default=0.01,type=float, help='Regularization parameter λ used in ridge regression')
+    parser.add_argument('--maxiter',default=50,type=int, help='Maximum number of iterations')
+    parser.add_argument('--debug',default='INFO', help='Verbosity level',choices=['DEBUG','INFO','WARNING','ERROR','CRITICAL'])
+    parser.add_argument('--logfile',default='SB.log',help='Log file')
+    parser.set_defaults(screen_output=True)
+    parser.add_argument('--noscreenoutput',dest="screen_output",action='store_false',help='Suppress screen output')
+
+
+    args = parser.parse_args()
+
+    level = "logging."+args.debug
+    logger.setLevel(eval(level))
+    clearFile(args.logfile)
+    fh = logging.FileHandler(args.logfile)
+    fh.setLevel(eval(level))
+    fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(fh)	
+    if args.screen_output:
+        logger.addHandler(logging.StreamHandler())
+    logger.info("Starting with arguments: "+str(args))
+    logger.info('Level set to: '+str(level)) 
+
+    BanditClass = eval(args.strategy)
+
+
+    P = generateP(args.n)
+    U0 = np.random.randn(args.n,args.d)
+
+    sb = BanditClass(P,U0,args.alpha,args.sigma,args.lam)
+
+    sb.run(args.maxiter)
+ 
+
