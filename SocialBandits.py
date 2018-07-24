@@ -2,14 +2,34 @@
 import numpy as np
 from numpy.linalg import solve as solveLinear,inv,matrix_rank
 import logging
-#from scipy.sparse import coo_matrix,csr_matrix
+from scipy.linalg import sqrtm
 from pprint import pformat
 from time import time
 import argparse
+import random
 
 
 
 logger = logging.getLogger('Social Bandits')
+
+def sbasis(i,n):
+   """Standard basis vector e_i of dimension n."""
+   arr = np.zeros(n)
+   arr[i] = 1.0
+   return arr
+
+def extrema(B,c):
+   """Return the extreme points of set:
+
+          x :  || B x ||_1 <= c
+   """
+   Binv = inv(B)
+   n,n = B.shape
+   basis = [  sbasis(i,n)   for i in range(n)]
+   nbasis = [ -e for e in basis]
+   pnbasis =basis+nbasis
+   return [  c*np.matmul(Binv,y) for y  in pnbasis ]
+
 
 def clearFile(file):
     """Delete all contents of a file"""	
@@ -83,7 +103,8 @@ class SocialBandit():
            alpha: probability α that inherent interests are used
            U0: inherent interest matrix 
            sigma:  noise standard deviation σ, added when generating rewards
-           lambda: regularization parameter used in ridge regression
+           lam: regularization parameter λ used in ridge regression
+           constraints: type of constraints, e.g., l2ball, finiteset, etc.
         """
         self.P = P
         self.alpha = alpha
@@ -95,6 +116,10 @@ class SocialBandit():
         I = np.identity(self.n)
         self.Ainf = self.alpha*inv(I-self.beta*P)
 
+    def generateSet(self,M):
+        self.set = np.random.randn(M,self.d)
+        self.M = M
+ 
     def updateA(self,A):
         """ Update matrix A to the next iteration. Uses formula:
             A(t+1) = A(t) * β P + α I
@@ -222,8 +247,8 @@ class SocialBandit():
 
         self.u0 = sb.mat2vec(self.U0)
         self.A=sb.generateA()
-        i = 0
-        while i<t:
+        self.i = 0
+        while self.i<t:
             V = self.recommend();
             X = sb.generateX(self.A,V)
 	
@@ -237,31 +262,87 @@ class SocialBandit():
             Adiff = np.linalg.norm(np.reshape(self.A-self.Ainf,self.n*self.n))
             logger.info("It. %d: ||u_0-\hat{u}_0||_2 = %f, ||A-Ainf||= %f" % (i,udiff,Adiff))
 
-            i += 1
+            self.i += 1
             self.A = sb.updateA(self.A)
 
 
-class RandomBandit(SocialBandit):
-     def recommend(self):
+class RandomBanditL2Ball(SocialBandit):
+    def recommend(self):
         """ Recommend a random V"""
-        return np.random.randn(self.n,self.d)    
+        gaussian = np.random.randn(self.n,self.d) 
+        norms = np.linalg.norm(gaussian,2,1)
+        norms= np.reshape(norms,(self.n,1))
+        M = 1./np.tile(norms,(1,self.n))
+        return np.multiply(gaussian,M)
+     
+class RandomBanditFiniteSet(SocialBandit):
+     def recommend(self):      
+         V = self.set
+         recs = []
+         for i in range(n):
+             k = randint(0,self.M)
+             recs.append(V[k,:])
+         return np.reshape(np.concatenate(recs),(self.n,self.d))
+           
 
+class LinRel1(SocialBandit):
+    def __init__(self,P, U0, alpha=0.2, sigma = 0.0001, lam = 0.001,delta = 0.01,):
+        SocialBandit.__init__(self,P, U0, alpha,sigma,lam)
+        self.delta = delta
 
+    def recommend(self):
+        """ Recommend a random V"""
+        sqrtZ = sqrtm(self.Z)
+        N = self.n*self.d
+        b = np.max(  128*n*np.log(self.i)* np.log(self.i**2/self.delta),(8./3.*np.log(self.i**2/self.delta))**2  )
+        ext = extrema(sqrtZ,np.sqrt(N*b))
+        logger.debug("Optimizing over %d possible u extrema." % len(ext) )
+        L = self.generateL(self.A)
+        optval = float("-inf")
+        for u in ext:
+            u = u+self.u0est
+            u = np.reshape(u,(1,n))
+	    z = np.matmul(u, L)
+            v,val = self.getoptv(z)
+	    if val>optval:
+                logger.debug("recommend found new maximum at value %f" % val)
+                optval = val
+                optv = v
+                optu = u
+        return self.vec2mat(optv)
 
+class LinRel1FiniteSet(LinRel1):
+     def getoptv(self,z):
+         options = self.set
+         Z = self.vec2mat(z)
+         V = np.zeros(self.n,self.d)
+         for in range(self.n):
+             optval = float("-inf")
+             for j  in range(self.M):
+                 val = np.dot(Z[i,:],options[j,:])
+                 if val>optval:
+                     logger.debug("getoptv found new maximimum at value %f" % val)
+                     optval = val
+                     V[i,:] = options[j,:]
+        return self.mat2vec(V)
+   
+    
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description = 'Social Bandit Simulator',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('strategy',help="Recommendation strategy.",choices= ["RandomBandit","LinREL","LinUCB"]) 
+    parser.add_argument('strategy',help="Recommendation strategy.",choices= ["RandomBandit","LinREL1","LinRel2""LinUCB"]) 
     parser.add_argument('--n',default=100,type=int,help ="Number of users") 
     parser.add_argument('--d',default=10,type=int,help ="Number of dimensions") 
     parser.add_argument('--alpha',default=0.05,type=float, help='α value. β is set to 1 - α ')
     parser.add_argument('--sigma',default=0.05,type=float, help='Standard deviation σ of noise added to responses ')
     parser.add_argument('--lam',default=0.01,type=float, help='Regularization parameter λ used in ridge regression')
+    parser.add_argument('--delta',default=0.05,type=float, help='δ value. Used by LinREL ')
     parser.add_argument('--maxiter',default=50,type=int, help='Maximum number of iterations')
+    parser.add_argument('--constraints',help="Recommendation set.",choices= ["l2ball","finite"]) 
     parser.add_argument('--debug',default='INFO', help='Verbosity level',choices=['DEBUG','INFO','WARNING','ERROR','CRITICAL'])
     parser.add_argument('--logfile',default='SB.log',help='Log file')
     parser.set_defaults(screen_output=True)
     parser.add_argument('--noscreenoutput',dest="screen_output",action='store_false',help='Suppress screen output')
-
+    parser.add_argument("--randseed",type=int,default = 42,help="Random seed")
 
     args = parser.parse_args()
 
@@ -279,12 +360,17 @@ if __name__=="__main__":
 
     BanditClass = eval(args.strategy)
 
+    np.random.seed(args.randseed)
+    random.seed(args.randseed)
 
     P = generateP(args.n)
     U0 = np.random.randn(args.n,args.d)
 
-    sb = BanditClass(P,U0,args.alpha,args.sigma,args.lam)
+    if args.strategy=="LinREL1":
+        sb = BanditClass(P,U0,args.alpha,args.sigma,args.lam,args.constraints,args.delta)
+    else:
+        sb = BanditClass(P,U0,args.alpha,args.sigma,args.lam,args.constraints)
 
     sb.run(args.maxiter)
- 
+    
 
