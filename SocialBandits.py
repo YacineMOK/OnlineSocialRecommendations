@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import numpy as np
-from numpy.linalg import solve as linearSystemSolver,inv,matrix_rank
+from numpy.linalg import solve as solveLinear,inv,matrix_rank
 import logging
 #from scipy.sparse import coo_matrix,csr_matrix
 from pprint import pformat
@@ -37,8 +37,33 @@ def testExpectedRewards(n, d, alpha = 0.2):
     rtot2= sb.expectedTotalRewardViaX(X)
     rtot3= sb.expectedTotalRewardViaA(A,V)
 
-    print "Total reward differences are: |r1-r2|=%d,|r2-r3|=%d,|r3-r1|=%d" % (np.abs(rtot1-rtot2),np.abs(rtot2-rtot3),np.abs(rtot3-rtot1))
+    print "Total reward differences are: |r1-r2|=%f,|r2-r3|=%f,|r3-r1|=%f" % (np.abs(rtot1-rtot2),np.abs(rtot2-rtot3),np.abs(rtot3-rtot1))
 
+def testRandomStrategy(n, d, t = 5,alpha = 0.2,sigma=0.001,lam = 0.00001):
+    P = generateP(n)
+    U0 = np.random.randn(n,d)
+    
+    sb = SocialBandit(P,U0,alpha,sigma)
+    u0 = sb.mat2vec(U0)
+
+    i = 0
+    A=sb.generateA()
+    Z = lam*np.identity(n*d)
+    XTr = np.zeros(n*d)
+    while i<t:
+        V = np.random.randn(n,d)
+        X = sb.generateX(A,V)
+	
+        r = sb.generateRandomRewards(X)     
+        
+        Z = sb.updateZ(Z,X)
+        XTr = sb.updateXTr(XTr,X,r)
+
+        u0est = sb.regress(Z,XTr)
+        Adiff = np.reshape(A-sb.Ainf,n*n)
+        print "It. %d: ||u_0-\hat{u}_0||_2 = %f, ||A-Ainf||= %f" % (i,np.linalg.norm(u0est-u0),np.linalg.norm(Adiff)) 
+        i += 1
+        A = sb.updateA(A)
 
 class SocialBandit():
     def __init__(self,P, U0, alpha=0.2, sigma = 0.0):
@@ -54,6 +79,8 @@ class SocialBandit():
         self.U0 = U0
         self.n,self.d = U0.shape
         self.sigma = sigma
+        I = np.identity(self.n)
+        self.Ainf = self.alpha*inv(I-self.beta*P)
 
     def updateA(self,A):
         """ Update matrix A to the next iteration. Uses formula:
@@ -144,22 +171,27 @@ class SocialBandit():
         
     def generateRandomRewards(self,X):
 	"""Produce rewards with noise"""
-        return self.expectedRewardsViaX(X)+np.random.randn(self.n)*np.sigma
+        return self.expectedRewardsViaX(X)+np.random.randn(self.n)*self.sigma
 
     def generateZ(self,X):
+        """Generate Z = XT*X """
         return np.matmul(X.T,X)
 
     def updateZ(self,Z,X):
+        """Update Z = Z+XT*X """
         return Z+np.matmul(X.T,X)
 
     def generateXTr(self,X,r):
+        """Generate XT*r """
         return np.matmul(X.T,r)
 
 
     def updateXTr(self,XTr,X,r):
+        """Update XT*r with new X and r"""
         return XTr+np.matmul(X.T,r)
 
 
     def regress(self,Z,XTr):
-        """Obtain solution"""
+        """Solve least squares problem min_u||X*u-r||_2^2"""
+        return solveLinear(Z,XTr)
         
