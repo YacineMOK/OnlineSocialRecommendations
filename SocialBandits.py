@@ -272,7 +272,7 @@ class RandomBanditL2Ball(SocialBandit):
         gaussian = np.random.randn(self.n,self.d) 
         norms = np.linalg.norm(gaussian,2,1)
         norms= np.reshape(norms,(self.n,1))
-        M = 1./np.tile(norms,(1,self.n))
+        M = 1./np.tile(norms,(1,self.d))
         return np.multiply(gaussian,M)
      
 class RandomBanditFiniteSet(SocialBandit):
@@ -312,10 +312,12 @@ class LinREL1(SocialBandit):
         return self.vec2mat(optv)
 
 class LinREL1FiniteSet(LinREL1):
+     """ LinREL class recommending over a finite set"""
      def getoptv(self,z):
          options = self.set
          Z = self.vec2mat(z)
          V = np.zeros(self.n,self.d)
+         totval = 0.0
          for in range(self.n):
              optval = float("-inf")
              for j  in range(self.M):
@@ -324,8 +326,17 @@ class LinREL1FiniteSet(LinREL1):
                      logger.debug("getoptv found new maximimum at value %f" % val)
                      optval = val
                      V[i,:] = options[j,:]
-        return self.mat2vec(V)
+             totval += optval
+        return self.mat2vec(V),totval
    
+class LinREL1L2Ball(LinREL1):
+     """ LinREL class recommending over a finite set"""
+     def getoptv(self,z):
+         Z = self.vec2mat(z)
+         norms = np.linalg.norm(Z,2,1)
+         norms= np.reshape(norms,(self.n,1))
+         M = 1./np.tile(norms,(1,self.d))
+         return (self.mat2vec(np.multiply(Z,M)),sum(norms))
     
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description = 'Social Bandit Simulator',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
