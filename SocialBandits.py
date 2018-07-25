@@ -104,7 +104,6 @@ class SocialBandit():
            U0: inherent interest matrix 
            sigma:  noise standard deviation σ, added when generating rewards
            lam: regularization parameter λ used in ridge regression
-           constraints: type of constraints, e.g., L2Ball, finiteset, etc.
         """
         self.P = P
         self.alpha = alpha
@@ -235,7 +234,12 @@ class SocialBandit():
         
 
     def recommend(self):
-        pass
+        gaussian = np.random.randn(self.n,self.d) 
+        norms = np.linalg.norm(gaussian,2,1)
+        norms= np.reshape(norms,(self.n,1))
+        M = 1./np.tile(norms,(1,self.d))
+        return np.multiply(gaussian,M)
+
   
     def initializeRun(self):
         Z = self.lam*np.identity(self.n*self.d)
@@ -246,6 +250,7 @@ class SocialBandit():
         self.Z,self.XTr=self.initializeRun()
 
         self.u0 = sb.mat2vec(self.U0)
+        self.u0est = np.zeros(self.n*self.d)
         self.A=sb.generateA()
         self.i = 0
         while self.i<t:
@@ -260,7 +265,7 @@ class SocialBandit():
             self.u0est = sb.regress(self.Z,self.XTr)
             udiff = np.linalg.norm(self.u0est-self.u0)
             Adiff = np.linalg.norm(np.reshape(self.A-self.Ainf,self.n*self.n))
-            logger.info("It. %d: ||u_0-\hat{u}_0||_2 = %f, ||A-Ainf||= %f" % (i,udiff,Adiff))
+            logger.info("It. %d: ||u_0-\hat{u}_0||_2 = %f, ||A-Ainf||= %f" % (self.i,udiff,Adiff))
 
             self.i += 1
             self.A = sb.updateA(self.A)
@@ -277,33 +282,39 @@ class RandomBanditL2Ball(SocialBandit):
      
 class RandomBanditFiniteSet(SocialBandit):
      def recommend(self):      
-         V = self.set
+         options = self.set
          recs = []
-         for i in range(n):
-             k = randint(0,self.M)
-             recs.append(V[k,:])
+         for i in range(self.n):
+             k = np.random.randint(0,self.M)
+             logger.debug("Selected arm %d out of %d for user %d" % (k,self.M,i))
+             recs.append(options[k,:])
          return np.reshape(np.concatenate(recs),(self.n,self.d))
            
 
 class LinREL1(SocialBandit):
-    def __init__(self,P, U0, alpha=0.2, sigma = 0.0001, lam = 0.001,delta = 0.01,):
+    def __init__(self,P, U0, alpha=0.2, sigma = 0.0001, lam = 0.001,delta = 0.01,warmup=True):
         SocialBandit.__init__(self,P, U0, alpha,sigma,lam)
         self.delta = delta
+        self.warmup=warmup
 
     def recommend(self):
-        """ Recommend a random V"""
+        """ Recommend a V using the LinREL1 algorithm """
+        if self.warmup and self.i<self.d:
+            return SocialBandit.recommend(self)       
         sqrtZ = sqrtm(self.Z)
         N = self.n*self.d
-        b = np.max(  128*n*np.log(self.i)* np.log(self.i**2/self.delta),(8./3.*np.log(self.i**2/self.delta))**2  )
+        b = max(  128*N*np.log(self.i+2)* np.log((self.i+2)**2/self.delta),(8./3.*np.log((self.i+2)**2/self.delta))**2  )
         ext = extrema(sqrtZ,np.sqrt(N*b))
         logger.debug("Optimizing over %d possible u extrema." % len(ext) )
         L = self.generateL(self.A)
         optval = float("-inf")
         for u in ext:
             u = u+self.u0est
-            u = np.reshape(u,(1,n))
+            #print np.linalg.norm(u),max(u),min(u)
+            u = np.reshape(u,(1,N))
 	    z = np.matmul(u, L)
             v,val = self.getoptv(z)
+            #logger.debug("Current value: %f" % val)
 	    if val>optval:
                 logger.debug("recommend found new maximum at value %f" % val)
                 optval = val
@@ -318,7 +329,7 @@ class LinREL1FiniteSet(LinREL1):
          Z = self.vec2mat(z)
          V = np.zeros(self.n,self.d)
          totval = 0.0
-         for in range(self.n):
+         for i in range(self.n):
              optval = float("-inf")
              for j  in range(self.M):
                  val = np.dot(Z[i,:],options[j,:])
@@ -327,15 +338,16 @@ class LinREL1FiniteSet(LinREL1):
                      optval = val
                      V[i,:] = options[j,:]
              totval += optval
-        return self.mat2vec(V),totval
+         return (self.mat2vec(V),totval)
    
 class LinREL1L2Ball(LinREL1):
      """ LinREL class recommending over a finite set"""
      def getoptv(self,z):
          Z = self.vec2mat(z)
          norms = np.linalg.norm(Z,2,1)
+         #logger.debug("Max norm: %f, Min norm: %f, Counts: %d" % (max(norms),min(norms),len(norms)))
          norms= np.reshape(norms,(self.n,1))
-         M = 1./np.tile(norms,(1,self.d))
+         M = np.nan_to_num(1./np.tile(norms,(1,self.d)))
          return (self.mat2vec(np.multiply(Z,M)),sum(norms))
     
 if __name__=="__main__":
@@ -346,7 +358,7 @@ if __name__=="__main__":
     parser.add_argument('--alpha',default=0.05,type=float, help='α value. β is set to 1 - α ')
     parser.add_argument('--sigma',default=0.05,type=float, help='Standard deviation σ of noise added to responses ')
     parser.add_argument('--lam',default=0.01,type=float, help='Regularization parameter λ used in ridge regression')
-    parser.add_argument('--delta',default=0.05,type=float, help='δ value. Used by LinREL ')
+    parser.add_argument('--delta',default=0.1,type=float, help='δ value. Used by LinREL ')
     parser.add_argument('--M',default=100,type=float, help='Size M of finite set. Used by all finite set strategies. ')
     parser.add_argument('--maxiter',default=50,type=int, help='Maximum number of iterations')
     parser.add_argument('--debug',default='INFO', help='Verbosity level',choices=['DEBUG','INFO','WARNING','ERROR','CRITICAL'])
@@ -378,9 +390,9 @@ if __name__=="__main__":
     U0 = np.random.randn(args.n,args.d)
 
     if "LinREL" in args.strategy:
-        sb = BanditClass(P,U0,args.alpha,args.sigma,args.lam,args.constraints,args.delta)
+        sb = BanditClass(P,U0,args.alpha,args.sigma,args.lam,args.delta)
     else:
-        sb = BanditClass(P,U0,args.alpha,args.sigma,args.lam,args.constraints)
+        sb = BanditClass(P,U0,args.alpha,args.sigma,args.lam)
 
     if "Finite" in args.strategy:
         sb.generateFiniteSet(args.M)
