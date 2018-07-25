@@ -292,7 +292,7 @@ class RandomBanditFiniteSet(SocialBandit):
            
 
 class LinREL1(SocialBandit):
-    def __init__(self,P, U0, alpha=0.2, sigma = 0.0001, lam = 0.001,delta = 0.01,warmup=True):
+    def __init__(self,P, U0, alpha=0.2, sigma = 0.0001, lam = 0.001,delta = 0.01,warmup=False):
         SocialBandit.__init__(self,P, U0, alpha,sigma,lam)
         self.delta = delta
         self.warmup=warmup
@@ -327,7 +327,7 @@ class LinREL1FiniteSet(LinREL1):
      def getoptv(self,z):
          options = self.set
          Z = self.vec2mat(z)
-         V = np.zeros(self.n,self.d)
+         V = np.zeros((self.n,self.d))
          totval = 0.0
          for i in range(self.n):
              optval = float("-inf")
