@@ -249,26 +249,26 @@ class SocialBandit():
     def run(self,t=10):
         self.Z,self.XTr=self.initializeRun()
 
-        self.u0 = sb.mat2vec(self.U0)
+        self.u0 = self.mat2vec(self.U0)
         self.u0est = np.zeros(self.n*self.d)
-        self.A=sb.generateA()
+        self.A=self.generateA()
         self.i = 0
         while self.i<t:
             V = self.recommend();
-            X = sb.generateX(self.A,V)
+            X = self.generateX(self.A,V)
 	
-            r = sb.generateRandomRewards(X)     
+            r = self.generateRandomRewards(X)     
         
-            self.Z = sb.updateZ(self.Z,X)
-            self.XTr = sb.updateXTr(self.XTr,X,r)
+            self.Z = self.updateZ(self.Z,X)
+            self.XTr = self.updateXTr(self.XTr,X,r)
 
-            self.u0est = sb.regress(self.Z,self.XTr)
+            self.u0est = self.regress(self.Z,self.XTr)
             udiff = np.linalg.norm(self.u0est-self.u0)
             Adiff = np.linalg.norm(np.reshape(self.A-self.Ainf,self.n*self.n))
             logger.info("It. %d: ||u_0-\hat{u}_0||_2 = %f, ||A-Ainf||= %f" % (self.i,udiff,Adiff))
 
             self.i += 1
-            self.A = sb.updateA(self.A)
+            self.A = self.updateA(self.A)
 
 
 class RandomBanditL2Ball(SocialBandit):
