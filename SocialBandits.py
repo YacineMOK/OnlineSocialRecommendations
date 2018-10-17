@@ -34,7 +34,7 @@ def extrema(B,c):
 def clearFile(file):
     """Delete all contents of a file"""	
     with open(file,'w') as f:
-   	f.write("")
+        f.write("")
 
 def generateP(n):
     """Generate an n x n matrix P """
@@ -138,7 +138,7 @@ class SocialBandit():
         """ Return current vector U, via
             U(t) = A(t) * U0
         """
-	return np.matmul(A,self.U0)
+        return np.matmul(A,self.U0)
 
 
  
@@ -198,16 +198,15 @@ class SocialBandit():
         """ Compute the total expected reward  via:
             rtot(t) = 1 * X(t) * u0
         """
-	return np.sum(self.expectedRewardsViaX(X))
+        return np.sum(self.expectedRewardsViaX(X))
 
     def expectedTotalRewardViaA(self,A,V):
         """ Compute the total expected reward  via:
             rtot(t) = 1 * X(t) * u0
         """
-	return np.sum(self.expectedRewardsViaA(A,V))
+        return np.sum(self.expectedRewardsViaA(A,V))
         
     def generateRandomRewards(self,X):
-	"""Produce rewards with noise"""
         return self.expectedRewardsViaX(X)+np.random.randn(self.n)*self.sigma
 
     def generateZ(self,X):
@@ -256,7 +255,7 @@ class SocialBandit():
         while self.i<t:
             V = self.recommend();
             X = self.generateX(self.A,V)
-	
+
             r = self.generateRandomRewards(X)     
         
             self.Z = self.updateZ(self.Z,X)
@@ -312,10 +311,10 @@ class LinREL1(SocialBandit):
             u = u+self.u0est
             #print np.linalg.norm(u),max(u),min(u)
             u = np.reshape(u,(1,N))
-	    z = np.matmul(u, L)
+            z = np.matmul(u, L)
             v,val = self.getoptv(z)
             #logger.debug("Current value: %f" % val)
-	    if val>optval:
+        if val>optval:
                 logger.debug("recommend found new maximum at value %f" % val)
                 optval = val
                 optv = v
@@ -349,10 +348,62 @@ class LinREL1L2Ball(LinREL1):
          norms= np.reshape(norms,(self.n,1))
          M = np.nan_to_num(1./np.tile(norms,(1,self.d)))
          return (self.mat2vec(np.multiply(Z,M)),sum(norms))
+
+
+
+class LinREL2(SocialBandit):
+    def __init__(self,P, U0, alpha=0.2, sigma = 0.0001, lam = 0.001,delta = 0.01,warmup=False):
+        SocialBandit.__init__(self,P, U0, alpha,sigma,lam)
+        self.delta = delta
+        self.warmup=warmup
+
+    def recommend(self):
+        """ Recommend a V using the LinREL1 algorithm """
+        if self.warmup and self.i<self.d:
+            return SocialBandit.recommend(self)       
+        sqrtZ = sqrtm(self.Z)
+        N = self.n*self.d
+        b = max(  128*N*np.log(self.i+2)* np.log((self.i+2)**2/self.delta),(8./3.*np.log((self.i+2)**2/self.delta))**2  )
+        ext = extrema(sqrtZ,np.sqrt(b))
+        logger.debug("Optimizing over %d possible u extrema." % len(ext) )
+        L = self.generateL(self.A)
+        optval = float("-inf")
+        for u in ext:
+            u = (u**2+self.u0est)**0.5
+            #print np.linalg.norm(u),max(u),min(u)
+            u = np.reshape(u,(1,N))
+            z = np.matmul(u, L)
+            v,val = self.getoptv(z)
+            #logger.debug("Current value: %f" % val)
+        if val>optval:
+                logger.debug("recommend found new maximum at value %f" % val)
+                optval = val
+                optv = v
+                optu = u
+        return self.vec2mat(optv)
+
+class LinREL2FiniteSet(LinREL2):
+     """ LinREL class recommending over a finite set"""
+     def getoptv(self,z):
+         options = self.set
+         Z = self.vec2mat(z)
+         V = np.zeros((self.n,self.d))
+         totval = 0.0
+         for i in range(self.n):
+             optval = float("-inf")
+             for j  in range(self.M):
+                 val = np.dot(Z[i,:],options[j,:])
+                 if val>optval:
+                     logger.debug("getoptv found new maximimum at value %f" % val)
+                     optval = val
+                     V[i,:] = options[j,:]
+             totval += optval
+         return (self.mat2vec(V),totval)
+   
     
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description = 'Social Bandit Simulator',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('strategy',help="Recommendation strategy.",choices= ["RandomBanditL2Ball","RandomBanditFiniteSet","LinREL1L2Ball","LinREL1FiniteSet","LinREL2","LinUCB"]) 
+    parser.add_argument('strategy',help="Recommendation strategy.",choices= ["RandomBanditL2Ball","RandomBanditFiniteSet","LinREL1L2Ball","LinREL1FiniteSet","LinREL2FiniteSet","LinUCB"]) 
     parser.add_argument('--n',default=100,type=int,help ="Number of users") 
     parser.add_argument('--d',default=10,type=int,help ="Number of dimensions") 
     parser.add_argument('--alpha',default=0.05,type=float, help='α value. β is set to 1 - α ')
