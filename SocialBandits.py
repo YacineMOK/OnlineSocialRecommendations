@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+
 import numpy as np
 from numpy.linalg import solve as solveLinear,inv,matrix_rank
 import logging
@@ -7,11 +7,12 @@ from pprint import pformat
 from time import time
 import argparse
 import random
+from numpy import linalg as LA
+import matplotlib.pyplot as plt
 
 
 
 logger = logging.getLogger('Social Bandits')
-
 def sbasis(i,n):
    """Standard basis vector e_i of dimension n."""
    arr = np.zeros(n)
@@ -27,26 +28,53 @@ def extrema(B,c):
    n,n = B.shape
    basis = [  sbasis(i,n)   for i in range(n)]
    nbasis = [ -e for e in basis]
-   pnbasis =basis+nbasis
+   pnbasis =basis+nbasis#合并两个list
+   #print(pnbasis)
+   for y in pnbasis:
+       print(np.matmul(Binv,y))
+       print(c*np.matmul(Binv,y))
+       
    return [  c*np.matmul(Binv,y) for y  in pnbasis ]
+###############################################################################
+'''
+B=np.zeros([4,4])
 
+for i in range(4):
+    B[i,i]=i+1
 
+print(B)
+
+#c=2
+#extrema(B,c)
+'''
+################################################################################
 def clearFile(file):
-    """Delete all contents of a file"""	
+    """Delete all contents of a file""" 
     with open(file,'w') as f:
         f.write("")
+###############################################################################
 
 def generateP(n):
     """Generate an n x n matrix P """
     P=np.random.random((n,n))
+    print('P=',P)
+    print('np.sum(P,1)=',np.sum(P,1))#每行求和
     Prowsums = np.reshape(np.sum(P,1),(n,1))
-    M = 1./np.tile(Prowsums,(1,n))
+    print('Prowsums',Prowsums)#将原来数据形成一列
+    x=[1/i for i in Prowsums]
+    print(x)
+    #print('np.tile(Prowsums,(1,n)=',np.tile(Prowsums,(1,n))
+    M = 1./np.tile(Prowsums,(1,n))#Prowsums复制n列再每个数据求倒数
+    print(M)
     return np.multiply(P,M)
-     
+##############################################################################
+#generateP(4)     
+###############################################################################
 def testExpectedRewards(n, d, alpha = 0.2):
     """ Test if different methods for computing rewards are correct """
     P = generateP(n)
     U0 = np.random.randn(n,d)
+    #np.random.randn这个函数的作用就是从标准正态分布中返回一个或多个样本值。(n,d)表示维度
     V = np.random.randn(n,d)
 
     sb = SocialBandit(P,U0,alpha)
@@ -59,43 +87,34 @@ def testExpectedRewards(n, d, alpha = 0.2):
 
     r1 = sb.expectedRewardsViaX(X)
     r2 = sb.expectedRewardsViaA(A,V)
-    print r1
-    print r2
-    print "Reward vector difference is:",np.linalg.norm(r1-r2)
+    print(r1)
+    print (r2)
+    print ("Reward vector difference is:",np.linalg.norm(r1-r2))
 
     rtot1= sb.expectedTotalRewardViaL(L,V)
     rtot2= sb.expectedTotalRewardViaX(X)
     rtot3= sb.expectedTotalRewardViaA(A,V)
 
-    print "Total reward differences are: |r1-r2|=%f,|r2-r3|=%f,|r3-r1|=%f" % (np.abs(rtot1-rtot2),np.abs(rtot2-rtot3),np.abs(rtot3-rtot1))
+    print ("Total reward differences are: |r1-r2|=%f,|r2-r3|=%f,|r3-r1|=%f" % (np.abs(rtot1-rtot2),np.abs(rtot2-rtot3),np.abs(rtot3-rtot1)))
+###################################################################################
+
+#testExpectedRewards(10, 8, alpha = 0.2)
+
+
+###################################################################################
 
 def testRandomStrategy(n, d, t = 5,alpha = 0.2,sigma=0.001,lam = 0.00001):
     """ Test estimation and random strategy. It is better to test this from the main program instead"""
     P = generateP(n)
     U0 = np.random.randn(n,d)
     
-    sb = SocialBandit(P,U0,alpha,sigma)
-    u0 = sb.mat2vec(U0)
+    sb = SocialBandit(P,U0,alpha,sigma,lam)
+    
+    sb.run(t)
+###############################################################################
+#testRandomStrategy(10, 8, t = 5,alpha = 0.2,sigma=0.001,lam = 0.00001)
 
-    i = 0
-    A=sb.generateA()
-    Z = lam*np.identity(n*d)
-    XTr = np.zeros(n*d)
-    while i<t:
-        V = np.random.randn(n,d)
-        X = sb.generateX(A,V)
-	
-        r = sb.generateRandomRewards(X)     
-        
-        Z = sb.updateZ(Z,X)
-        XTr = sb.updateXTr(XTr,X,r)
-
-        u0est = sb.regress(Z,XTr)
-        Adiff = np.reshape(A-sb.Ainf,n*n)
-        print "It. %d: ||u_0-\hat{u}_0||_2 = %f, ||A-Ainf||= %f" % (i,np.linalg.norm(u0est-u0),np.linalg.norm(Adiff)) 
-        i += 1
-        A = sb.updateA(A)
-
+###############################################################################
 class SocialBandit():
     def __init__(self,P, U0, alpha=0.2, sigma = 0.0001, lam = 0.001):
         """Initialize social bandit object. Arguments are:
@@ -127,7 +146,7 @@ class SocialBandit():
 
     def generateA(self,t=0):
         """ Generate matrix A at iteration t. It returns:
-            A(t) = α Σ_k=1^t (β P)^k 
+            A(t) = α Σ_k=0^t (β P)^k 
         """
         A = self.alpha*np.identity(self.n)
         for k in range(t):
@@ -265,9 +284,10 @@ class SocialBandit():
             udiff = np.linalg.norm(self.u0est-self.u0)
             Adiff = np.linalg.norm(np.reshape(self.A-self.Ainf,self.n*self.n))
             logger.info("It. %d: ||u_0-\hat{u}_0||_2 = %f, ||A-Ainf||= %f" % (self.i,udiff,Adiff))
-
+            print( "It. %d: ||u_0-\hat{u}_0||_2 = %f, ||A-Ainf||= %f" % (self.i,udiff,Adiff) )
             self.i += 1
             self.A = self.updateA(self.A)
+###############################################################################
 
 
 class RandomBanditL2Ball(SocialBandit):
@@ -289,6 +309,8 @@ class RandomBanditFiniteSet(SocialBandit):
              recs.append(options[k,:])
          return np.reshape(np.concatenate(recs),(self.n,self.d))
            
+###############################################################################
+
 
 class LinREL1(SocialBandit):
     def __init__(self,P, U0, alpha=0.2, sigma = 0.0001, lam = 0.001,delta = 0.01,warmup=False):
@@ -321,6 +343,45 @@ class LinREL1(SocialBandit):
                 optu = u
         return self.vec2mat(optv)
 
+
+#####################################################################################
+## this function is get the optimal v by using the known u0 at the first begin in order to get the final optimal rewards。
+
+class LinOptV(LinREL1):
+    def __init__(self,P, U0, alpha=0.2, sigma = 0.0001, lam = 0.001,delta = 0.01,warmup=False):
+        SocialBandit.__init__(self,P, U0, alpha,sigma,lam)
+        self.delta = delta
+        self.warmup=warmup
+
+    def recommend(self):
+        """ Recommend a V using the LinREL1 algorithm """
+        if self.warmup and self.i<self.d:
+            return SocialBandit.recommend(self)       
+        sqrtZ = sqrtm(self.Z)
+        N = self.n*self.d
+        b = max(  128*N*np.log(self.i+2)* np.log((self.i+2)**2/self.delta),(8./3.*np.log((self.i+2)**2/self.delta))**2  )
+        ext = extrema(sqrtZ,np.sqrt(N*b))
+        logger.debug("Optimizing over %d possible u extrema." % len(ext) )
+        L = self.generateL(self.A)
+        optval = float("-inf")
+       # u0=self.mat2vec(self.U0)
+        for u in ext:
+            u = u+self.u0
+            #print np.linalg.norm(u),max(u),min(u)
+            u = np.reshape(u,(1,N))
+            z = np.matmul(u, L)
+            v,val = self.getoptv(z)
+            #logger.debug("Current value: %f" % val)
+        if val>optval:
+                logger.debug("recommend found new maximum at value %f" % val)
+                optval = val
+                optv = v
+                optu = u
+        return self.vec2mat(optv)
+
+
+#####################################################################################  
+
 class LinREL1FiniteSet(LinREL1):
      """ LinREL class recommending over a finite set"""
      def getoptv(self,z):
@@ -350,6 +411,76 @@ class LinREL1L2Ball(LinREL1):
          return (self.mat2vec(np.multiply(Z,M)),sum(norms))
 
 
+#######################################################################################################
+######################################为LinOptV分为两种情况计算getoptv###################################
+class LinOptV1(LinREL1FiniteSet):
+    def __init__(self,P, U0, alpha=0.2, sigma = 0.0001, lam = 0.001,delta = 0.01,warmup=False):
+        SocialBandit.__init__(self,P, U0, alpha,sigma,lam)
+        self.delta = delta
+        self.warmup=warmup
+
+    def recommend(self):
+        """ Recommend a V using the LinREL1 algorithm """
+        if self.warmup and self.i<self.d:
+            return SocialBandit.recommend(self)       
+        sqrtZ = sqrtm(self.Z)
+        N = self.n*self.d
+        b = max(  128*N*np.log(self.i+2)* np.log((self.i+2)**2/self.delta),(8./3.*np.log((self.i+2)**2/self.delta))**2  )
+        ext = extrema(sqrtZ,np.sqrt(N*b))
+        logger.debug("Optimizing over %d possible u extrema." % len(ext) )
+        L = self.generateL(self.A)
+        optval = float("-inf")
+       # u0=self.mat2vec(self.U0)
+        for u in ext:
+            u = u+self.u0
+            #print np.linalg.norm(u),max(u),min(u)
+            u = np.reshape(u,(1,N))
+            z = np.matmul(u, L)
+            v,val = self.getoptv(z)
+            #logger.debug("Current value: %f" % val)
+        if val>optval:
+                logger.debug("recommend found new maximum at value %f" % val)
+                optval = val
+                optv = v
+                optu = u
+        return self.vec2mat(optv)
+
+
+#####################################################################################  
+class LinOptV2(LinREL1L2Ball):
+    def __init__(self,P, U0, alpha=0.2, sigma = 0.0001, lam = 0.001,delta = 0.01,warmup=False):
+        SocialBandit.__init__(self,P, U0, alpha,sigma,lam)
+        self.delta = delta
+        self.warmup=warmup
+
+    def recommend(self):
+        """ Recommend a V using the LinREL1 algorithm """
+        if self.warmup and self.i<self.d:
+            return SocialBandit.recommend(self)       
+        sqrtZ = sqrtm(self.Z)
+        N = self.n*self.d
+        b = max(  128*N*np.log(self.i+2)* np.log((self.i+2)**2/self.delta),(8./3.*np.log((self.i+2)**2/self.delta))**2  )
+        ext = extrema(sqrtZ,np.sqrt(N*b))
+        logger.debug("Optimizing over %d possible u extrema." % len(ext) )
+        L = self.generateL(self.A)
+        optval = float("-inf")
+       # u0=self.mat2vec(self.U0)
+        for u in ext:
+            u = u+self.u0
+            #print np.linalg.norm(u),max(u),min(u)
+            u = np.reshape(u,(1,N))
+            z = np.matmul(u, L)
+            v,val = self.getoptv(z)
+            #logger.debug("Current value: %f" % val)
+        if val>optval:
+                logger.debug("recommend found new maximum at value %f" % val)
+                optval = val
+                optv = v
+                optu = u
+        return self.vec2mat(optv)
+
+##############################################################################
+
 
 class LinREL2(SocialBandit):
     def __init__(self,P, U0, alpha=0.2, sigma = 0.0001, lam = 0.001,delta = 0.01,warmup=False):
@@ -358,7 +489,7 @@ class LinREL2(SocialBandit):
         self.warmup=warmup
 
     def recommend(self):
-        """ Recommend a V using the LinREL1 algorithm """
+        """ Recommend a V using the LinREL2 algorithm """
         if self.warmup and self.i<self.d:
             return SocialBandit.recommend(self)       
         sqrtZ = sqrtm(self.Z)
@@ -400,7 +531,160 @@ class LinREL2FiniteSet(LinREL2):
              totval += optval
          return (self.mat2vec(V),totval)
    
+###########################################################################################
+###############################################################################
+def Difference(n, d, alpha =0.2):
+    '''calculate the different between expected rewards via A and LinREL1'''
+   
+    P = generateP(n)
+    U0 = np.random.randn(n,d)
     
+    
+
+    sb11 = LinOptV1(P, U0, alpha, sigma = 0.0001, lam = 0.001,delta = 0.01,warmup=False)
+    A11=sb11.generateA()
+    M=100
+    sb11.generateFiniteSet(M)
+    sb11.run(t=10) #function define self.Z
+    V11=sb11.recommend() 
+    
+    
+    sb12 = LinOptV2(P, U0, alpha, sigma = 0.0001, lam = 0.001,delta = 0.01,warmup=False)
+    A12=sb12.generateA()
+    M=100
+    sb12.generateFiniteSet(M)
+    sb12.run(t=10) #function define self.Z
+    V12=sb12.recommend() 
+
+
+
+
+
+    '''
+    sb2=LinREL1(P, U0, alpha, sigma = 0.0001, lam = 0.001,delta = 0.01,warmup=False)
+    A2=sb2.generateA()
+    sb2.run()
+    V2=sb2.recommend()
+    r2=sb2.expectedRewardsViaA(A2,V2)
+    print(r2)
+    '''
+    
+    sb2=LinREL1FiniteSet(P, U0, alpha, sigma = 0.0001, lam = 0.001,delta = 0.01,warmup=False)
+    A2=sb2.generateA()
+    M=100
+    sb2.generateFiniteSet(M)
+    sb2.run(t=10) #function define self.Z
+    V2=sb2.recommend() #function define V
+    #r2=sb2.expectedRewardsViaA(A2,V2)
+    
+    sb3=LinREL1L2Ball(P, U0, alpha, sigma = 0.0001, lam = 0.001,delta = 0.01,warmup=False)
+    A3=sb3.generateA()
+    M=100
+    sb3.generateFiniteSet(M)
+    sb3.run(t=10)
+    V3=sb3.recommend()
+    #r3=sb3.expectedRewardsViaA(A3,V3)
+    
+    #r1 = sb1.expectedRewardsViaA(A1,V1)
+    #r2=sb2.expectedRewardsViaA(A2,V2) 
+    #r3=sb3.expectedRewardsViaA(A3,V3)
+    
+    sb4=RandomBanditFiniteSet(P, U0, alpha, sigma = 0.0001, lam = 0.001)
+    A4=sb4.generateA()
+    M=100
+    sb4.generateFiniteSet(M)
+    sb4.run(t=10)
+    V4=sb4.recommend()
+    
+   
+    rtot11= sb11.expectedTotalRewardViaA(A11,V11)
+    rtot12= sb12.expectedTotalRewardViaA(A12,V12)
+    rtot2= sb2.expectedTotalRewardViaA(A2,V2)
+    rtot3= sb3.expectedTotalRewardViaA(A3,V3)
+    rtot4= sb3.expectedTotalRewardViaA(A4,V4)
+
+    diffA_r1r2=np.abs(rtot11-rtot2)
+    diffA_r1r3=np.abs(rtot11-rtot3)
+    diffA_r1r4=np.abs(rtot11-rtot4)
+    
+    diffB_r1r2=np.abs(rtot12-rtot2)
+    diffB_r1r3=np.abs(rtot12-rtot3)
+    diffB_r1r4=np.abs(rtot12-rtot4)
+    
+    
+    
+    print ("Total reward differences are: |r11-r2|=%f,|r11-r3|=%f,|r11-r4|=%f" % (diffA_r1r2,diffA_r1r3,diffA_r1r4))
+    print ("Total reward differences are: |r12-r2|=%f,|r12-r3|=%f,|r12-r4|=%f" % (diffB_r1r2,diffB_r1r3,diffB_r1r4))
+    return diffA_r1r2,diffA_r1r3,diffA_r1r4,diffB_r1r2,diffB_r1r3,diffB_r1r4
+##############################################################################################
+def dessin(fois,n,d,alpha =0.2):
+    '''
+    calculate the rewards (r1-r2,r1-r3,r1-r4) fois times and draw the results
+    '''
+    T=[]
+    R_A1=[]
+    R_A2=[]
+    R_A3=[]
+    sum1_A=0
+    sum2_A=0
+    sum3_A=0
+    
+    R_B1=[]
+    R_B2=[]
+    R_B3=[]  
+    sum1_B=0
+    sum2_B=0
+    sum3_B=0
+
+    
+    for i in range (fois):
+        d_A1,d_A2,d_A3,d_B1,d_B2,d_B3= Difference(n, d, alpha)
+        
+        sum1_A=sum1_A+d_A1
+        sum2_A=sum2_A+d_A2
+        sum3_A=sum3_A+d_A3
+        
+        R_A1.append(sum1_A)
+        R_A2.append(sum2_A)
+        R_A3.append(sum3_A)
+        
+        sum1_B=sum1_B+d_B1
+        sum2_B=sum2_B+d_B2
+        sum3_B=sum3_B+d_B3
+        
+        R_B1.append(sum1_B)
+        R_B2.append(sum2_B)
+        R_B3.append(sum3_B)                
+        T.append(i+1)
+  
+    return R_A1,R_A2,R_A3,R_B1,R_B2,R_B3,T
+
+    plt.subplot(1, 2, 1) 
+    plt.title('Result Analysis_A')        
+    plt.plot(T, R_A1, color='blue', label='r1-r2')
+    plt.plot(T, R_A2, color='green', label=' r1-r3 ')
+    plt.plot(T, R_A3, color='red', label=' r1-r4')
+    plt.legend() # present graph 
+    plt.xlabel('time')
+    plt.ylabel('rewards_difference')
+    plt.show()
+    
+    plt.subplot(1, 2, 1) 
+    plt.title('Result Analysis_B')        
+    plt.plot(T, R_B1, color='blue', label='r1-r2')
+    plt.plot(T, R_B2, color='green', label=' r1-r3 ')
+    plt.plot(T, R_B3, color='red', label=' r1-r4')
+    plt.legend() # present graph 
+    plt.xlabel('time')
+    plt.ylabel('rewards_difference')
+    plt.show()
+    
+ 
+###############################################################################
+#dessin(100,10,10,0.2) 
+
+#################################################################################   
+
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description = 'Social Bandit Simulator',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('strategy',help="Recommendation strategy.",choices= ["RandomBanditL2Ball","RandomBanditFiniteSet","LinREL1L2Ball","LinREL1FiniteSet","LinREL2FiniteSet","LinUCB"]) 
@@ -426,7 +710,7 @@ if __name__=="__main__":
     fh = logging.FileHandler(args.logfile)
     fh.setLevel(eval(level))
     fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-    logger.addHandler(fh)	
+    logger.addHandler(fh)   
     if args.screen_output:
         logger.addHandler(logging.StreamHandler())
     logger.info("Starting with arguments: "+str(args))
@@ -449,5 +733,3 @@ if __name__=="__main__":
         sb.generateFiniteSet(args.M)
 
     sb.run(args.maxiter)
-    
-
