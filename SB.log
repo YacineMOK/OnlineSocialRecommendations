@@ -1,2 +1,2 @@
-2018-10-17 16:14:58,299 - Social Bandits - INFO - Starting with arguments: Namespace(M=100, alpha=0.05, d=10, debug='INFO', delta=0.1, lam=0.01, logfile='SB.log', maxiter=50, n=100, randseed=42, screen_output=True, sigma=0.05, strategy='LinREL2FiniteSet')
-2018-10-17 16:14:58,299 - Social Bandits - INFO - Level set to: logging.INFO
+2018-11-23 11:17:02,934 - Social Bandits - INFO - Starting with arguments: Namespace(M=100, alpha=0.05, d=10, debug='INFO', delta=0.1, lam=0.01, logfile='SB.log', maxiter=50, n=100, randseed=42, screen_output=True, sigma=0.05, strategy='RandomBanditFiniteSet')
+2018-11-23 11:17:02,934 - Social Bandits - INFO - Level set to: logging.INFO

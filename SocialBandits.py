@@ -1,3 +1,15 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Nov 23 11:46:18 2018
+
+"""
+
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Nov 16 17:46:34 2018
+
+"""
+
 
 import numpy as np
 from numpy.linalg import solve as solveLinear,inv,matrix_rank
@@ -423,20 +435,13 @@ class LinOptV1(LinREL1FiniteSet):
         """ Recommend a V using the LinREL1 algorithm """
         if self.warmup and self.i<self.d:
             return SocialBandit.recommend(self)       
-        sqrtZ = sqrtm(self.Z)
         N = self.n*self.d
-        b = max(  128*N*np.log(self.i+2)* np.log((self.i+2)**2/self.delta),(8./3.*np.log((self.i+2)**2/self.delta))**2  )
-        ext = extrema(sqrtZ,np.sqrt(N*b))
-        logger.debug("Optimizing over %d possible u extrema." % len(ext) )
+        u0 = self.U0
+        u = np.reshape(u0,(1,N))
         L = self.generateL(self.A)
+        z = np.matmul(u, L)
         optval = float("-inf")
-       # u0=self.mat2vec(self.U0)
-        for u in ext:
-            u = u+self.u0
-            #print np.linalg.norm(u),max(u),min(u)
-            u = np.reshape(u,(1,N))
-            z = np.matmul(u, L)
-            v,val = self.getoptv(z)
+        v,val = self.getoptv(z)
             #logger.debug("Current value: %f" % val)
         if val>optval:
                 logger.debug("recommend found new maximum at value %f" % val)
@@ -444,10 +449,8 @@ class LinOptV1(LinREL1FiniteSet):
                 optv = v
                 optu = u
         return self.vec2mat(optv)
-
-
-#####################################################################################  
-class LinOptV2(LinREL1L2Ball):
+    '''
+class LinOptV1(LinREL1FiniteSet):
     def __init__(self,P, U0, alpha=0.2, sigma = 0.0001, lam = 0.001,delta = 0.01,warmup=False):
         SocialBandit.__init__(self,P, U0, alpha,sigma,lam)
         self.delta = delta
@@ -479,7 +482,8 @@ class LinOptV2(LinREL1L2Ball):
                 optu = u
         return self.vec2mat(optv)
 
-##############################################################################
+'''
+
 
 
 class LinREL2(SocialBandit):
@@ -548,14 +552,6 @@ def Difference(n, d, alpha =0.2):
     sb11.run(t=10) #function define self.Z
     V11=sb11.recommend() 
     
-    
-    sb12 = LinOptV2(P, U0, alpha, sigma = 0.0001, lam = 0.001,delta = 0.01,warmup=False)
-    A12=sb12.generateA()
-    M=100
-    sb12.generateFiniteSet(M)
-    sb12.run(t=10) #function define self.Z
-    V12=sb12.recommend() 
-
 
 
 
@@ -598,7 +594,7 @@ def Difference(n, d, alpha =0.2):
     
    
     rtot11= sb11.expectedTotalRewardViaA(A11,V11)
-    rtot12= sb12.expectedTotalRewardViaA(A12,V12)
+   
     rtot2= sb2.expectedTotalRewardViaA(A2,V2)
     rtot3= sb3.expectedTotalRewardViaA(A3,V3)
     rtot4= sb3.expectedTotalRewardViaA(A4,V4)
@@ -607,15 +603,11 @@ def Difference(n, d, alpha =0.2):
     diffA_r1r3=np.abs(rtot11-rtot3)
     diffA_r1r4=np.abs(rtot11-rtot4)
     
-    diffB_r1r2=np.abs(rtot12-rtot2)
-    diffB_r1r3=np.abs(rtot12-rtot3)
-    diffB_r1r4=np.abs(rtot12-rtot4)
-    
     
     
     print ("Total reward differences are: |r11-r2|=%f,|r11-r3|=%f,|r11-r4|=%f" % (diffA_r1r2,diffA_r1r3,diffA_r1r4))
-    print ("Total reward differences are: |r12-r2|=%f,|r12-r3|=%f,|r12-r4|=%f" % (diffB_r1r2,diffB_r1r3,diffB_r1r4))
-    return diffA_r1r2,diffA_r1r3,diffA_r1r4,diffB_r1r2,diffB_r1r3,diffB_r1r4
+  #  print ("Total reward differences are: |r12-r2|=%f,|r12-r3|=%f,|r12-r4|=%f" % (diffB_r1r2,diffB_r1r3,diffB_r1r4))
+    return diffA_r1r2,diffA_r1r3,diffA_r1r4
 ##############################################################################################
 def dessin(fois,n,d,alpha =0.2):
     '''
@@ -629,16 +621,10 @@ def dessin(fois,n,d,alpha =0.2):
     sum2_A=0
     sum3_A=0
     
-    R_B1=[]
-    R_B2=[]
-    R_B3=[]  
-    sum1_B=0
-    sum2_B=0
-    sum3_B=0
 
     
     for i in range (fois):
-        d_A1,d_A2,d_A3,d_B1,d_B2,d_B3= Difference(n, d, alpha)
+        d_A1,d_A2,d_A3= Difference(n, d, alpha)
         
         sum1_A=sum1_A+d_A1
         sum2_A=sum2_A+d_A2
@@ -648,16 +634,10 @@ def dessin(fois,n,d,alpha =0.2):
         R_A2.append(sum2_A)
         R_A3.append(sum3_A)
         
-        sum1_B=sum1_B+d_B1
-        sum2_B=sum2_B+d_B2
-        sum3_B=sum3_B+d_B3
-        
-        R_B1.append(sum1_B)
-        R_B2.append(sum2_B)
-        R_B3.append(sum3_B)                
+             
         T.append(i+1)
   
-    return R_A1,R_A2,R_A3,R_B1,R_B2,R_B3,T
+    return R_A1,R_A2,R_A3,T
 
     plt.subplot(1, 2, 1) 
     plt.title('Result Analysis_A')        
@@ -668,20 +648,10 @@ def dessin(fois,n,d,alpha =0.2):
     plt.xlabel('time')
     plt.ylabel('rewards_difference')
     plt.show()
-    
-    plt.subplot(1, 2, 1) 
-    plt.title('Result Analysis_B')        
-    plt.plot(T, R_B1, color='blue', label='r1-r2')
-    plt.plot(T, R_B2, color='green', label=' r1-r3 ')
-    plt.plot(T, R_B3, color='red', label=' r1-r4')
-    plt.legend() # present graph 
-    plt.xlabel('time')
-    plt.ylabel('rewards_difference')
-    plt.show()
-    
+
  
 ###############################################################################
-#dessin(100,10,10,0.2) 
+dessin(100,10,10,0.2) 
 
 #################################################################################   
 
@@ -733,3 +703,4 @@ if __name__=="__main__":
         sb.generateFiniteSet(args.M)
 
     sb.run(args.maxiter)
+    
