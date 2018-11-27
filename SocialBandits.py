@@ -152,13 +152,13 @@ class SocialBandit():
  
     def updateA(self,A):
         """ Update matrix A to the next iteration. Uses formula:
-            A(t+1) = A(t) * β P + α I
+            A(t+1) = A(t) * β P + α I
         """
         return np.matmul(A,self.beta*self.P)+self.alpha*np.identity(self.n) 
 
     def generateA(self,t=0):
         """ Generate matrix A at iteration t. It returns:
-            A(t) = α Σ_k=0^t (β P)^k 
+            A(t) = α Σ_k=0^t (β P)^k 
         """
         A = self.alpha*np.identity(self.n)
         for k in range(t):
@@ -356,42 +356,6 @@ class LinREL1(SocialBandit):
         return self.vec2mat(optv)
 
 
-#####################################################################################
-## this function is get the optimal v by using the known u0 at the first begin in order to get the final optimal rewards。
-
-class LinOptV(LinREL1):
-    def __init__(self,P, U0, alpha=0.2, sigma = 0.0001, lam = 0.001,delta = 0.01,warmup=False):
-        SocialBandit.__init__(self,P, U0, alpha,sigma,lam)
-        self.delta = delta
-        self.warmup=warmup
-
-    def recommend(self):
-        """ Recommend a V using the LinREL1 algorithm """
-        if self.warmup and self.i<self.d:
-            return SocialBandit.recommend(self)       
-        sqrtZ = sqrtm(self.Z)
-        N = self.n*self.d
-        b = max(  128*N*np.log(self.i+2)* np.log((self.i+2)**2/self.delta),(8./3.*np.log((self.i+2)**2/self.delta))**2  )
-        ext = extrema(sqrtZ,np.sqrt(N*b))
-        logger.debug("Optimizing over %d possible u extrema." % len(ext) )
-        L = self.generateL(self.A)
-        optval = float("-inf")
-       # u0=self.mat2vec(self.U0)
-        for u in ext:
-            u = u+self.u0
-            #print np.linalg.norm(u),max(u),min(u)
-            u = np.reshape(u,(1,N))
-            z = np.matmul(u, L)
-            v,val = self.getoptv(z)
-            #logger.debug("Current value: %f" % val)
-        if val>optval:
-                logger.debug("recommend found new maximum at value %f" % val)
-                optval = val
-                optv = v
-                optu = u
-        return self.vec2mat(optv)
-
-
 #####################################################################################  
 
 class LinREL1FiniteSet(LinREL1):
@@ -424,7 +388,7 @@ class LinREL1L2Ball(LinREL1):
 
 
 #######################################################################################################
-######################################为LinOptV分为两种情况计算getoptv###################################
+
 class LinOptV1(LinREL1FiniteSet):
     def __init__(self,P, U0, alpha=0.2, sigma = 0.0001, lam = 0.001,delta = 0.01,warmup=False):
         SocialBandit.__init__(self,P, U0, alpha,sigma,lam)
@@ -609,7 +573,7 @@ def Difference(n, d, alpha =0.2):
   #  print ("Total reward differences are: |r12-r2|=%f,|r12-r3|=%f,|r12-r4|=%f" % (diffB_r1r2,diffB_r1r3,diffB_r1r4))
     return diffA_r1r2,diffA_r1r3,diffA_r1r4
 ##############################################################################################
-def dessin(fois,n,d,alpha =0.2):
+def dessin(fois,n,d,alpha):
     '''
     calculate the rewards (r1-r2,r1-r3,r1-r4) fois times and draw the results
     '''
@@ -621,24 +585,28 @@ def dessin(fois,n,d,alpha =0.2):
     sum2_A=0
     sum3_A=0
     
+    f = open("SocialBandits.txt", "w+")
+    columnTitleRow = "times, rewardLinREL1FiniteSet, rewardLinREL1L2Ball, rewardLinREL1L2Ball \n"
+    f.write(columnTitleRow)
 
-    
     for i in range (fois):
         d_A1,d_A2,d_A3= Difference(n, d, alpha)
         
         sum1_A=sum1_A+d_A1
         sum2_A=sum2_A+d_A2
         sum3_A=sum3_A+d_A3
-        
+        row = i + "," + sum1_A + "," + sum2_A + "," + sum3_A + "\n"
+        f.write(row)
         R_A1.append(sum1_A)
         R_A2.append(sum2_A)
         R_A3.append(sum3_A)
-        
-             
+
         T.append(i+1)
   
     return R_A1,R_A2,R_A3,T
 
+   
+'''
     plt.subplot(1, 2, 1) 
     plt.title('Result Analysis_A')        
     plt.plot(T, R_A1, color='blue', label='r1-r2')
@@ -648,17 +616,18 @@ def dessin(fois,n,d,alpha =0.2):
     plt.xlabel('time')
     plt.ylabel('rewards_difference')
     plt.show()
-
+'''
  
 ###############################################################################
-dessin(100,10,10,0.2) 
+#dessin(2000,10,10,0.2) 
 
 #################################################################################   
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description = 'Social Bandit Simulator',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('strategy',help="Recommendation strategy.",choices= ["RandomBanditL2Ball","RandomBanditFiniteSet","LinREL1L2Ball","LinREL1FiniteSet","LinREL2FiniteSet","LinUCB"]) 
+    parser.add_argument('strategy',help="Recommendation strategy.",choices= ["RandomBanditL2Ball","RandomBanditFiniteSet","LinREL1L2Ball","LinREL1FiniteSet","LinREL2FiniteSet","LinUCB","dessin"]) 
     parser.add_argument('--n',default=100,type=int,help ="Number of users") 
+    parser.add_argument('--fois',default=500,type=int,help ="Number of trial") 
     parser.add_argument('--d',default=10,type=int,help ="Number of dimensions") 
     parser.add_argument('--alpha',default=0.05,type=float, help='α value. β is set to 1 - α ')
     parser.add_argument('--sigma',default=0.05,type=float, help='Standard deviation σ of noise added to responses ')
@@ -671,6 +640,7 @@ if __name__=="__main__":
     parser.set_defaults(screen_output=True)
     parser.add_argument('--noscreenoutput',dest="screen_output",action='store_false',help='Suppress screen output')
     parser.add_argument("--randseed",type=int,default = 42,help="Random seed")
+    
 
     args = parser.parse_args()
 
