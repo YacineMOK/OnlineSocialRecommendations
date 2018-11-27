@@ -501,14 +501,9 @@ class LinREL2FiniteSet(LinREL2):
    
 ###########################################################################################
 ###############################################################################
-def Difference(n, d, alpha =0.2):
+def Difference(P, U0, alpha =0.2):
     '''calculate the different between expected rewards via A and LinREL1'''
-   
-    P = generateP(n)
-    U0 = np.random.randn(n,d)
     
-    
-
     sb11 = LinOptV1(P, U0, alpha, sigma = 0.0001, lam = 0.001,delta = 0.01,warmup=False)
     A11=sb11.generateA()
     M=100
@@ -516,10 +511,6 @@ def Difference(n, d, alpha =0.2):
     sb11.run(t=10) #function define self.Z
     V11=sb11.recommend() 
     
-
-
-
-
     '''
     sb2=LinREL1(P, U0, alpha, sigma = 0.0001, lam = 0.001,delta = 0.01,warmup=False)
     A2=sb2.generateA()
@@ -573,7 +564,7 @@ def Difference(n, d, alpha =0.2):
   #  print ("Total reward differences are: |r12-r2|=%f,|r12-r3|=%f,|r12-r4|=%f" % (diffB_r1r2,diffB_r1r3,diffB_r1r4))
     return diffA_r1r2,diffA_r1r3,diffA_r1r4
 ##############################################################################################
-def dessin(fois,n,d,alpha):
+def dessin(fois,P,U0,alpha):
     '''
     calculate the rewards (r1-r2,r1-r3,r1-r4) fois times and draw the results
     '''
@@ -586,12 +577,11 @@ def dessin(fois,n,d,alpha):
     sum3_A=0
     
     f = open("SocialBandits.txt", "w+")
-    columnTitleRow = "times, rewardLinREL1FiniteSet, rewardLinREL1L2Ball, rewardLinREL1L2Ball \n"
+    columnTitleRow = "times, rewardLinREL1FiniteSet, rewardLinREL1L2Ball, rewardRandomBanditFiniteSet\n"
     f.write(columnTitleRow)
 
     for i in range (fois):
-        d_A1,d_A2,d_A3= Difference(n, d, alpha)
-        
+        d_A1,d_A2,d_A3= Difference(P, U0, alpha)
         sum1_A=sum1_A+d_A1
         sum2_A=sum2_A+d_A2
         sum3_A=sum3_A+d_A3
@@ -602,7 +592,7 @@ def dessin(fois,n,d,alpha):
         R_A3.append(sum3_A)
 
         T.append(i+1)
-  
+    f.close()
     return R_A1,R_A2,R_A3,T
 
    
@@ -625,7 +615,7 @@ def dessin(fois,n,d,alpha):
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description = 'Social Bandit Simulator',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('strategy',help="Recommendation strategy.",choices= ["RandomBanditL2Ball","RandomBanditFiniteSet","LinREL1L2Ball","LinREL1FiniteSet","LinREL2FiniteSet","LinUCB","dessin"]) 
+    parser.add_argument('strategy',help="Recommendation strategy.",choices= ["RandomBanditL2Ball","RandomBanditFiniteSet","LinREL1L2Ball","LinREL1FiniteSet","LinREL2FiniteSet","LinUCB"]) 
     parser.add_argument('--n',default=100,type=int,help ="Number of users") 
     parser.add_argument('--fois',default=500,type=int,help ="Number of trial") 
     parser.add_argument('--d',default=10,type=int,help ="Number of dimensions") 
@@ -640,6 +630,7 @@ if __name__=="__main__":
     parser.set_defaults(screen_output=True)
     parser.add_argument('--noscreenoutput',dest="screen_output",action='store_false',help='Suppress screen output')
     parser.add_argument("--randseed",type=int,default = 42,help="Random seed")
+    parser.add_argument("--test", type = bool, default = False) 
     
 
     args = parser.parse_args()
@@ -660,17 +651,20 @@ if __name__=="__main__":
 
     np.random.seed(args.randseed)
     random.seed(args.randseed)
-
+    
     P = generateP(args.n)
     U0 = np.random.randn(args.n,args.d)
 
-    if "LinREL" in args.strategy:
-        sb = BanditClass(P,U0,args.alpha,args.sigma,args.lam,args.delta)
-    else:
-        sb = BanditClass(P,U0,args.alpha,args.sigma,args.lam)
+    if args.test :
+        dessin(args.fois,P,U0,args.alpha)
+    else :
+        if "LinREL" in args.strategy:
+            sb = BanditClass(P,U0,args.alpha,args.sigma,args.lam,args.delta)
+        else:
+            sb = BanditClass(P,U0,args.alpha,args.sigma,args.lam)
 
-    if "Finite" in args.strategy:
-        sb.generateFiniteSet(args.M)
+        if "Finite" in args.strategy:
+            sb.generateFiniteSet(args.M)
 
-    sb.run(args.maxiter)
+        sb.run(args.maxiter)
     
