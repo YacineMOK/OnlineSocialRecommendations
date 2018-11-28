@@ -332,6 +332,26 @@ class RandomBanditFiniteSet(SocialBandit):
 
 ###############################################################################
 
+class regressionLinREL1(SocialBandit):
+    def __init__(self, P, U0, alpha=0.2, sigma=0.0001, lam=0.001, delta=0.01, warmup=False):
+        SocialBandit.__init__(self, P, U0, alpha, sigma, lam)
+        self.delta = delta
+        self.warmup = warmup
+
+    def recommend(self):
+        """ Recommend a V using the LinREL1 algorithm """
+        if self.warmup and self.i < self.d:
+            return SocialBandit.recommend(self)
+        sqrtZ = sqrtm(self.Z)
+        N = self.n * self.d
+        
+        L = self.generateL(self.A)
+      
+        u = np.reshape(self.u0est, (1, N))
+        z = np.matmul(u, L)
+        optv ,_ = self.getoptv(z)
+      
+        return self.vec2mat(optv)
 
 class LinREL1(SocialBandit):
     def __init__(self, P, U0, alpha=0.2, sigma=0.0001, lam=0.001, delta=0.01, warmup=False):
@@ -348,21 +368,21 @@ class LinREL1(SocialBandit):
         b = max(128 * N * np.log(self.i + 2) * np.log((self.i + 2) ** 2 / self.delta),
                 (8. / 3. * np.log((self.i + 2) ** 2 / self.delta)) ** 2)
         ext = extrema(sqrtZ, np.sqrt(N * b))
+        
         logger.debug("Optimizing over %d possible u extrema." % len(ext))
         L = self.generateL(self.A)
         optval = float("-inf")
         for u in ext:
-            u = u + self.u0est
-            # print np.linalg.norm(u),max(u),min(u)
-            u = np.reshape(u, (1, N))
-            z = np.matmul(u, L)
+            ue = u + self.u0est
+            ue = np.reshape(ue, (1, N))
+            z = np.matmul(ue, L)
             v, val = self.getoptv(z)
             # logger.debug("Current value: %f" % val)
-        if val > optval:
-            logger.debug("recommend found new maximum at value %f" % val)
-            optval = val
-            optv = v
-            optu = u
+            if val > optval:
+                logger.debug("recommend found new maximum at value %f" % val)
+                optval = val
+                optv = v
+                optu = u
         return self.vec2mat(optv)
 
 
@@ -387,10 +407,28 @@ class LinREL1FiniteSet(LinREL1):
             totval += optval
         return (self.mat2vec(V), totval)
 
+class regressionLinREL1FiniteSet(regressionLinREL1):
+    """ Regression LinREL class recommending over a finite set"""
 
+    def getoptv(self, z):
+        options = self.set
+        Z = self.vec2mat(z)
+        V = np.zeros((self.n, self.d))
+        totval = 0.0
+        for i in range(self.n):
+            optval = float("-inf")
+            for j in range(self.M):
+                val = np.dot(Z[i, :], options[j, :])
+                if val > optval:
+                    logger.debug("getoptv found new maximimum at value %f" % val)
+                    optval = val
+                    V[i, :] = options[j, :]
+            totval += optval
+        return (self.mat2vec(V), totval)
+    
 class LinREL1L2Ball(LinREL1):
     """ LinREL class recommending over a finite set"""
-
+    
     def getoptv(self, z):
         Z = self.vec2mat(z)
         norms = np.linalg.norm(Z, 2, 1)
@@ -459,7 +497,6 @@ class LinOptV1(LinREL1FiniteSet):
                 optv = v
                 optu = u
         return self.vec2mat(optv)
-
 '''
 
 

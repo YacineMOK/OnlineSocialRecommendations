@@ -3,10 +3,11 @@
 import numpy as np
 import pandas as pd
 from SocialBandits import *
+import matplotlib.pyplot as plt
 
 def testSocialBandits(P, U0, H, alpha, sigma, lam, delta):
 
-    BanditStrategies = ['LinOptV1', 'RandomBanditFiniteSet', 'LinREL1L2Ball'] #, 'LinREL1L2Ball', 'RandomBanditFiniteSet']
+    BanditStrategies = ['LinOptV1', 'regressionLinREL1FiniteSet',  'LinREL1FiniteSet', 'RandomBanditFiniteSet'] #, 'RandomBanditFiniteSet'] #, ]
     rewards = np.zeros((H, len(BanditStrategies)))
     regrets = []
     M = 100 # Number of finite set 
@@ -18,11 +19,20 @@ def testSocialBandits(P, U0, H, alpha, sigma, lam, delta):
         else:
             sb = BanditClass(P, U0, alpha, sigma, lam)
             
-        sb.generateFiniteSet(M)
+        sb.generateFiniteSet(M) # It should be fixed. We should use the same finite set at each bandit
         rewards[:,i] = sb.run(H)
 
         if i > 0:
-           regrets.append({'bandit': strategy, 'regret': np.cumsum(rewards[:,i] - rewards[:,0])})
+            regret = np.cumsum(rewards[:,0] - rewards[:,i])
+            regrets.append({'bandit': strategy, 'regret': regret})
+            plt.plot(regret, label=strategy)
+    
+    plt.xlabel('Horizon (time step)')
+    plt.ylabel('Regret')
+    plt.legend(loc='upper left')
+    plt.savefig('regretfig')
+    plt.show()
+
     df = pd.DataFrame(regrets)
     df.to_csv('out.csv') # it should be renamed
     
