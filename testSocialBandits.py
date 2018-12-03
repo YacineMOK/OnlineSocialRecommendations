@@ -5,7 +5,7 @@ import pandas as pd
 from SocialBandits import *
 import matplotlib.pyplot as plt
 
-def testSocialBandits(P, U0, H, alpha, sigma, lam, delta):
+def testSocialBandits(P, U0, H, alpha, sigma, lam, delta, scale):
 
     BanditStrategies = ['LinOptV1', 'regressionLinREL1FiniteSet',  'LinREL1FiniteSet', 'RandomBanditFiniteSet'] #, 'RandomBanditFiniteSet'] #, ]
     rewards = np.zeros((H, len(BanditStrategies)))
@@ -15,7 +15,7 @@ def testSocialBandits(P, U0, H, alpha, sigma, lam, delta):
     for i, strategy in enumerate(BanditStrategies):
         BanditClass = eval(strategy)
         if "LinREL" in strategy:
-            sb = BanditClass(P, U0, alpha, sigma, lam, delta)
+            sb = BanditClass(P, U0, alpha, sigma, lam, delta, scale)
         else:
             sb = BanditClass(P, U0, alpha, sigma, lam)
             
@@ -28,7 +28,7 @@ def testSocialBandits(P, U0, H, alpha, sigma, lam, delta):
             plt.plot(regret, label=strategy)
     
     plt.xlabel('Horizon (time step)')
-    plt.ylabel('Regret')
+    plt.ylabel('Cumulative Regret')
     plt.legend(loc='upper left')
     plt.savefig('regretfig')
     plt.show()
@@ -38,15 +38,16 @@ def testSocialBandits(P, U0, H, alpha, sigma, lam, delta):
     
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description = 'Social Bandit Test Runner',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--n',default=100,type=int,help ="Number of users") 
-    parser.add_argument('--h',default=500,type=int,help ="Horizon")
-    parser.add_argument('--d',default=10,type=int,help ="Number of dimensions") 
-    parser.add_argument('--alpha',default=0.05,type=float, help='alpha value. beta is set to 1 - alpha')
-    parser.add_argument('--sigma',default=0.05,type=float, help='Standard deviation σ of noise added to responses ')
-    parser.add_argument('--lam',default=0.01,type=float, help='Regularization parameter λ used in ridge regression')
-    parser.add_argument('--delta',default=0.1,type=float, help='δ value. Used by LinREL')
-    parser.add_argument('--M',default=100,type=float, help='Size M of finite set. Used by all finite set strategies. ')
-    parser.add_argument('--maxiter',default=50,type=int, help='Maximum number of iterations')
+    parser.add_argument('--n', default=100, type=int,help ="Number of users") 
+    parser.add_argument('--t', default=500, type=int,help ="Horizon")
+    parser.add_argument('--d', default=10, type=int,help ="Number of dimensions") 
+    parser.add_argument('--alpha', default=0.05, type=float, help='alpha value. beta is set to 1 - alpha')
+    parser.add_argument('--sigma', default=0.05, type=float, help='Standard deviation σ of noise added to responses ')
+    parser.add_argument('--lam', default=0.01, type=float, help='Regularization parameter λ used in ridge regression')
+    parser.add_argument('--delta', default=0.1, type=float, help='δ value. Used by LinREL')
+    parser.add_argument('--scale', default=1e-05, type=float, help='δ value. Used by LinREL')
+    parser.add_argument('--M',default=100, type=float, help='Size M of finite set. Used by all finite set strategies. ')
+    parser.add_argument('--maxiter',default=50, type=int, help='Maximum number of iterations')
     parser.add_argument('--debug',default='INFO', help='Verbosity level',choices=['DEBUG','INFO','WARNING','ERROR','CRITICAL'])
     parser.add_argument('--logfile',default='SB.log',help='Log file')
     parser.set_defaults(screen_output=True)
@@ -61,7 +62,7 @@ if __name__=="__main__":
     P = generateP(args.n)
     U0 = np.random.randn(args.n,args.d)
 
-    testSocialBandits(P, U0, args.h, args.alpha, args.sigma, args.lam, args.delta)
+    testSocialBandits(P, U0, args.t, args.alpha, args.sigma, args.lam, args.delta, args.scale)
 
     
     

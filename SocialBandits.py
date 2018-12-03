@@ -11,7 +11,7 @@ Created on Fri Nov 16 17:46:34 2018
 """
 
 import numpy as np
-from numpy.linalg import solve as solveLinear, inv, matrix_rank
+from numpy.linalg import solve as solveLinear, inv, matrix_rank, pinv
 import logging
 from scipy.linalg import sqrtm
 from pprint import pformat
@@ -41,11 +41,10 @@ def extrema(B, c):
     basis = [sbasis(i, n) for i in range(n)]
     nbasis = [-e for e in basis]
     pnbasis = basis + nbasis  # 合并两个list
-    # print(pnbasis)
+    #print(pnbasis)
     # for y in pnbasis:
     #     print(np.matmul(Binv, y))
     #     print(c * np.matmul(Binv, y))
-
     return [c * np.matmul(Binv, y) for y in pnbasis]
 
 
@@ -158,8 +157,9 @@ class SocialBandit():
         I = np.identity(self.n)
         self.Ainf = self.alpha * inv(I - self.beta * P)
 
-    def generateFiniteSet(self, M):
-        self.set = np.random.randn(M, self.d)
+    def generateFiniteSet(self, M, seed=45):
+        rng = np.random.RandomState(seed)
+        self.set = rng.randn(M, self.d)
         self.M = M
 
     def updateA(self, A):
@@ -303,6 +303,7 @@ class SocialBandit():
             Adiff = np.linalg.norm(np.reshape(self.A - self.Ainf, self.n * self.n))
             logger.info("It. %d: ||u_0-\hat{u}_0||_2 = %f, ||A-Ainf||= %f" % (self.i, udiff, Adiff))
             print("It. %d: ||u_0-\hat{u}_0||_2 = %f, ||A-Ainf||= %f" % (self.i, udiff, Adiff))
+
             self.i += 1
             self.A = self.updateA(self.A)
             
@@ -354,8 +355,9 @@ class regressionLinREL1(SocialBandit):
         return self.vec2mat(optv)
 
 class LinREL1(SocialBandit):
-    def __init__(self, P, U0, alpha=0.2, sigma=0.0001, lam=0.001, delta=0.01, warmup=False):
+    def __init__(self, P, U0, alpha=0.2, sigma=0.0001, lam=0.001, delta=0.01, scale=1e-05, warmup=False):
         SocialBandit.__init__(self, P, U0, alpha, sigma, lam)
+        self.scale = scale
         self.delta = delta
         self.warmup = warmup
 
@@ -366,7 +368,7 @@ class LinREL1(SocialBandit):
         sqrtZ = sqrtm(self.Z)
         N = self.n * self.d
         b = max(128 * N * np.log(self.i + 2) * np.log((self.i + 2) ** 2 / self.delta),
-                (8. / 3. * np.log((self.i + 2) ** 2 / self.delta)) ** 2)
+                (8. / 3. * np.log((self.i + 2) ** 2 / self.delta)) ** 2)*self.scale
         ext = extrema(sqrtZ, np.sqrt(N * b))
         
         logger.debug("Optimizing over %d possible u extrema." % len(ext))
@@ -501,10 +503,11 @@ class LinOptV1(LinREL1FiniteSet):
 
 
 class LinREL2(SocialBandit):
-    def __init__(self, P, U0, alpha=0.2, sigma=0.0001, lam=0.001, delta=0.01, warmup=False):
+    def __init__(self, P, U0, alpha=0.2, sigma=0.0001, lam=0.001, delta=0.01, scale=1., warmup=False):
         SocialBandit.__init__(self, P, U0, alpha, sigma, lam)
         self.delta = delta
         self.warmup = warmup
+        self.scale = scale
 
     def recommend(self):
         """ Recommend a V using the LinREL2 algorithm """
@@ -513,7 +516,7 @@ class LinREL2(SocialBandit):
         sqrtZ = sqrtm(self.Z)
         N = self.n * self.d
         b = max(128 * N * np.log(self.i + 2) * np.log((self.i + 2) ** 2 / self.delta),
-                (8. / 3. * np.log((self.i + 2) ** 2 / self.delta)) ** 2)
+                (8. / 3. * np.log((self.i + 2) ** 2 / self.delta)) ** 2)*self.scale
         ext = extrema(sqrtZ, np.sqrt(b))
         logger.debug("Optimizing over %d possible u extrema." % len(ext))
         L = self.generateL(self.A)
