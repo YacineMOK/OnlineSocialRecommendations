@@ -3,23 +3,36 @@
 import numpy as np
 import pandas as pd
 from SocialBandits import *
+import matplotlib
+#not using the X display
+matplotlib.use('Agg',force=True)
 import matplotlib.pyplot as plt
 
-def testSocialBandits(P, U0, H, alpha, sigma, lam, delta, scale):
+print matplotlib.backends.backend
 
-    BanditStrategies = ['LinOptV1', 'regressionLinREL1FiniteSet',  'LinREL1FiniteSet', 'RandomBanditFiniteSet'] #, 'RandomBanditFiniteSet'] #, ]
+def testFiniteSocialBandits(P, U0, n, d, H, M, alpha, sigma, lam, delta, scale):
+
+    BanditStrategies = ['LinOptV1', 'RegressionLinREL1FiniteSet',\
+            'LinREL1FiniteSet', 'RandomBanditFiniteSet']
     rewards = np.zeros((H, len(BanditStrategies)))
     regrets = []
-    M = 100 # Number of finite set 
-    
+  
+    figname = 'linrel1finite_n%d_d%d_h%d_m%d_a%f_s%f_d%f_scale%f'\
+            %(n,d,H,M,alpha,sigma,delta,scale)
+
+    #fake bandit class for generating the finite set
+    sb1 = SocialBandit(P,U0)
+    sb1.generateFiniteSet(M)
+    fst = sb1.getFiniteSet()
+
     for i, strategy in enumerate(BanditStrategies):
         BanditClass = eval(strategy)
         if "LinREL" in strategy:
             sb = BanditClass(P, U0, alpha, sigma, lam, delta, scale)
         else:
             sb = BanditClass(P, U0, alpha, sigma, lam)
+        sb.setFiniteSet(fst, M)
             
-        sb.generateFiniteSet(M) # It should be fixed. We should use the same finite set at each bandit
         rewards[:,i] = sb.run(H)
 
         if i > 0:
@@ -30,11 +43,11 @@ def testSocialBandits(P, U0, H, alpha, sigma, lam, delta, scale):
     plt.xlabel('Horizon (time step)')
     plt.ylabel('Cumulative Regret')
     plt.legend(loc='upper left')
-    plt.savefig('regretfig')
-    plt.show()
+    plt.savefig(figname,format='pdf')
+    #plt.show()
 
     df = pd.DataFrame(regrets)
-    df.to_csv('out.csv') # it should be renamed
+    df.to_csv('%s.csv'%figname) # it should be renamed
     
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description = 'Social Bandit Test Runner',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -45,8 +58,9 @@ if __name__=="__main__":
     parser.add_argument('--sigma', default=0.05, type=float, help='Standard deviation σ of noise added to responses ')
     parser.add_argument('--lam', default=0.01, type=float, help='Regularization parameter λ used in ridge regression')
     parser.add_argument('--delta', default=0.1, type=float, help='δ value. Used by LinREL')
-    parser.add_argument('--scale', default=1e-05, type=float, help='δ value. Used by LinREL')
-    parser.add_argument('--M',default=100, type=float, help='Size M of finite set. Used by all finite set strategies. ')
+    parser.add_argument('--scale', default=1, type=float, help=\
+            'scale of the β(t)  value. Used by LinREL')
+    parser.add_argument('--M',default=100, type=int, help='Size M of finite set. Used by all finite set strategies. ')
     parser.add_argument('--maxiter',default=50, type=int, help='Maximum number of iterations')
     parser.add_argument('--debug',default='INFO', help='Verbosity level',choices=['DEBUG','INFO','WARNING','ERROR','CRITICAL'])
     parser.add_argument('--logfile',default='SB.log',help='Log file')
@@ -62,8 +76,5 @@ if __name__=="__main__":
     P = generateP(args.n)
     U0 = np.random.randn(args.n,args.d)
 
-    testSocialBandits(P, U0, args.t, args.alpha, args.sigma, args.lam, args.delta, args.scale)
-
-    
-    
-    
+    testFiniteSocialBandits(P, U0, args.n, args.d, args.t, args.M,\
+            args.alpha, args.sigma, args.lam, args.delta, args.scale) 

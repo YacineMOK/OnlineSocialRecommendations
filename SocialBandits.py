@@ -162,6 +162,13 @@ class SocialBandit():
         self.set = rng.randn(M, self.d)
         self.M = M
 
+    def getFiniteSet(self):
+        return self.set
+
+    def setFiniteSet(self, fset, M):
+        self.set = fset
+        self.M = M
+
     def updateA(self, A):
         """ Update matrix A to the next iteration. Uses formula:
             A(t+1) = A(t) * β P + α I
@@ -333,7 +340,7 @@ class RandomBanditFiniteSet(SocialBandit):
 
 ###############################################################################
 
-class regressionLinREL1(SocialBandit):
+class RegressionLinREL1(SocialBandit):
     def __init__(self, P, U0, alpha=0.2, sigma=0.0001, lam=0.001, delta=0.01, warmup=False):
         SocialBandit.__init__(self, P, U0, alpha, sigma, lam)
         self.delta = delta
@@ -409,7 +416,7 @@ class LinREL1FiniteSet(LinREL1):
             totval += optval
         return (self.mat2vec(V), totval)
 
-class regressionLinREL1FiniteSet(regressionLinREL1):
+class RegressionLinREL1FiniteSet(RegressionLinREL1):
     """ Regression LinREL class recommending over a finite set"""
 
     def getoptv(self, z):
