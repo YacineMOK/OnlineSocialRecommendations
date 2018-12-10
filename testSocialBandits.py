@@ -8,18 +8,23 @@ import matplotlib
 matplotlib.use('Agg',force=True)
 import matplotlib.pyplot as plt
 
-print matplotlib.backends.backend
+print(matplotlib.backends.backend)
 
-def testFiniteSocialBandits(P, U0, n, d, H, M, alpha, sigma, lam, delta, scale):
+def testFiniteSocialBandits(P, U0, n, d, H, M, alpha, sigma, lam, delta, scale, finiteSet):
 
-    BanditStrategies = ['LinOptV1', 'RegressionLinREL1FiniteSet',\
-            'LinREL1FiniteSet', 'RandomBanditFiniteSet']
+    if finiteSet:
+        BanditStrategies = ['LinOptV1',  'RegressionLinREL1FiniteSet', \
+                            'LinREL2FiniteSet', 'LinREL1FiniteSet', 'RandomBanditFiniteSet']
+        figname = 'linrel1finite_n%d_d%d_h%d_m%d_a%f_s%f_d%f_scale%f'\
+                  %(n,d,H,M,alpha,sigma,delta,scale)
+    else:
+        BanditStrategies = ['LinOptV1', 'LinREL1L2Ball', 'RandomBanditL2Ball']
+        figname = 'linrel1_n%d_d%d_h%d_m%d_a%f_s%f_d%f_scale%f'\
+                  %(n,d,H,M,alpha,sigma,delta,scale)
+        
     rewards = np.zeros((H, len(BanditStrategies)))
     regrets = []
   
-    figname = 'linrel1finite_n%d_d%d_h%d_m%d_a%f_s%f_d%f_scale%f'\
-            %(n,d,H,M,alpha,sigma,delta,scale)
-
     #fake bandit class for generating the finite set
     sb1 = SocialBandit(P,U0)
     sb1.generateFiniteSet(M)
@@ -43,9 +48,9 @@ def testFiniteSocialBandits(P, U0, n, d, H, M, alpha, sigma, lam, delta, scale):
     plt.xlabel('Horizon (time step)')
     plt.ylabel('Cumulative Regret')
     plt.legend(loc='upper left')
-    plt.savefig(figname,format='pdf')
+    plt.savefig(figname+'.pdf',format='pdf')
     #plt.show()
-
+    
     df = pd.DataFrame(regrets)
     df.to_csv('%s.csv'%figname) # it should be renamed
     
@@ -67,7 +72,8 @@ if __name__=="__main__":
     parser.set_defaults(screen_output=True)
     parser.add_argument('--noscreenoutput',dest="screen_output",action='store_false',help='Suppress screen output')
     parser.add_argument("--randseed",type=int,default=42,help="Random seed")
-    
+    parser.add_argument('--finite_set', dest='finite_set', action='store_true', help="Finite set solution")
+
     args = parser.parse_args()
 
     np.random.seed(args.randseed)
@@ -77,4 +83,4 @@ if __name__=="__main__":
     U0 = np.random.randn(args.n,args.d)
 
     testFiniteSocialBandits(P, U0, args.n, args.d, args.t, args.M,\
-            args.alpha, args.sigma, args.lam, args.delta, args.scale) 
+                            args.alpha, args.sigma, args.lam, args.delta, args.scale, args.finite_set) 

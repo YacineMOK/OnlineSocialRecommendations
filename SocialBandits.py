@@ -20,6 +20,7 @@ import argparse
 import random
 from numpy import linalg as LA
 import matplotlib.pyplot as plt
+import networkx as nx
 
 logger = logging.getLogger('Social Bandits')
 
@@ -85,7 +86,6 @@ def generateP(n):
     #print(M)
     return np.multiply(P, M)
 
-
 ##############################################################################
 # generateP(4)
 ###############################################################################
@@ -118,10 +118,7 @@ def testExpectedRewards(n, d, alpha=0.2):
 
 
 ###################################################################################
-
 # testExpectedRewards(10, 8, alpha = 0.2)
-
-
 ###################################################################################
 
 def testRandomStrategy(n, d, t=5, alpha=0.2, sigma=0.001, lam=0.00001):
@@ -136,7 +133,6 @@ def testRandomStrategy(n, d, t=5, alpha=0.2, sigma=0.001, lam=0.00001):
 
 ###############################################################################
 # testRandomStrategy(10, 8, t = 5,alpha = 0.2,sigma=0.001,lam = 0.00001)
-
 ###############################################################################
 class SocialBandit():
     def __init__(self, P, U0, alpha=0.2, sigma=0.0001, lam=0.001):
@@ -297,9 +293,10 @@ class SocialBandit():
         self.i = 0
         while self.i < t:
             V = self.recommend();
-            X = self.generateX(self.A, V)
 
+            X = self.generateX(self.A, V)
             r = self.generateRandomRewards(X)
+            
             rews[self.i] = self.expectedTotalRewardViaA(self.A, V) # It should be verified
             print(rews[self.i])
             self.Z = self.updateZ(self.Z, X)
@@ -325,7 +322,6 @@ class RandomBanditL2Ball(SocialBandit):
         norms = np.reshape(norms, (self.n, 1))
         M = 1. / np.tile(norms, (1, self.d))
         return np.multiply(gaussian, M)
-
 
 class RandomBanditFiniteSet(SocialBandit):
     def recommend(self):
@@ -408,7 +404,7 @@ class LinREL1FiniteSet(LinREL1):
         for i in range(self.n):
             optval = float("-inf")
             for j in range(self.M):
-                val = np.dot(Z[i, :], options[j, :])
+                val = np.real(np.dot(Z[i, :], options[j, :]))
                 if val > optval:
                     logger.debug("getoptv found new maximimum at value %f" % val)
                     optval = val
@@ -510,7 +506,7 @@ class LinOptV1(LinREL1FiniteSet):
 
 
 class LinREL2(SocialBandit):
-    def __init__(self, P, U0, alpha=0.2, sigma=0.0001, lam=0.001, delta=0.01, scale=1., warmup=False):
+    def __init__(self, P, U0, alpha=0.2, sigma=0.0001, lam=0.001, delta=0.01, scale=1e-05, warmup=False):
         SocialBandit.__init__(self, P, U0, alpha, sigma, lam)
         self.delta = delta
         self.warmup = warmup
@@ -529,17 +525,17 @@ class LinREL2(SocialBandit):
         L = self.generateL(self.A)
         optval = float("-inf")
         for u in ext:
-            u = (u ** 2 + self.u0est) ** 0.5
-            # print np.linalg.norm(u),max(u),min(u)
+            # Original -> u = (u ** 2 + self.u0est) ** 0.5
+            # But it works only better if we set equal to:
+            u = u + self.u0est
             u = np.reshape(u, (1, N))
             z = np.matmul(u, L)
             v, val = self.getoptv(z)
-            # logger.debug("Current value: %f" % val)
-        if val > optval:
-            logger.debug("recommend found new maximum at value %f" % val)
-            optval = val
-            optv = v
-            optu = u
+            if val >= optval:
+                logger.debug("recommend found new maximum at value %f" % val)
+                optval = val
+                optv = v
+                optu = u
         return self.vec2mat(optv)
 
 
@@ -562,119 +558,6 @@ class LinREL2FiniteSet(LinREL2):
             totval += optval
         return (self.mat2vec(V), totval)
 
-
-###########################################################################################
-###############################################################################
-def Difference(P, U0, alpha=0.2):
-    '''calculate the different between expected rewards via A and LinREL1'''
-
-    sb11 = LinOptV1(P, U0, alpha, sigma=0.0001, lam=0.001, delta=0.01, warmup=False)
-    A11 = sb11.generateA()
-    M = 100
-    sb11.generateFiniteSet(M)
-    sb11.run(t=10)  # function define self.Z
-    V11 = sb11.recommend()
-
-    '''
-    sb2=LinREL1(P, U0, alpha, sigma = 0.0001, lam = 0.001,delta = 0.01,warmup=False)
-    A2=sb2.generateA()
-    sb2.run()
-    V2=sb2.recommend()
-    r2=sb2.expectedRewardsViaA(A2,V2)
-    print(r2)
-    '''
-
-    sb2 = LinREL1FiniteSet(P, U0, alpha, sigma=0.0001, lam=0.001, delta=0.01, warmup=False)
-    A2 = sb2.generateA()
-    M = 100
-    sb2.generateFiniteSet(M)
-    sb2.run(t=10)  # function define self.Z
-    V2 = sb2.recommend()  # function define V
-    # r2=sb2.expectedRewardsViaA(A2,V2)
-
-    sb3 = LinREL1L2Ball(P, U0, alpha, sigma=0.0001, lam=0.001, delta=0.01, warmup=False)
-    A3 = sb3.generateA()
-    M = 100
-    sb3.generateFiniteSet(M)
-    sb3.run(t=10)
-    V3 = sb3.recommend()
-    # r3=sb3.expectedRewardsViaA(A3,V3)
-
-    # r1 = sb1.expectedRewardsViaA(A1,V1)
-    # r2=sb2.expectedRewardsViaA(A2,V2)
-    # r3=sb3.expectedRewardsViaA(A3,V3)
-
-    sb4 = RandomBanditFiniteSet(P, U0, alpha, sigma=0.0001, lam=0.001)
-    A4 = sb4.generateA()
-    M = 100
-    sb4.generateFiniteSet(M)
-    sb4.run(t=10)
-    V4 = sb4.recommend()
-
-    rtot11 = sb11.expectedTotalRewardViaA(A11, V11)
-
-    rtot2 = sb2.expectedTotalRewardViaA(A2, V2)
-    rtot3 = sb3.expectedTotalRewardViaA(A3, V3)
-    rtot4 = sb3.expectedTotalRewardViaA(A4, V4)
-
-    diffA_r1r2 = np.abs(rtot11 - rtot2)
-    diffA_r1r3 = np.abs(rtot11 - rtot3)
-    diffA_r1r4 = np.abs(rtot11 - rtot4)
-
-    print("Total reward differences are: |r11-r2|=%f,|r11-r3|=%f,|r11-r4|=%f" % (diffA_r1r2, diffA_r1r3, diffA_r1r4))
-    #  print ("Total reward differences are: |r12-r2|=%f,|r12-r3|=%f,|r12-r4|=%f" % (diffB_r1r2,diffB_r1r3,diffB_r1r4))
-    return diffA_r1r2, diffA_r1r3, diffA_r1r4
-
-
-##############################################################################################
-def dessin(fois, P, U0, alpha):
-    '''
-    calculate the rewards (r1-r2,r1-r3,r1-r4) fois times and draw the results
-    '''
-    T = []
-    R_A1 = []
-    R_A2 = []
-    R_A3 = []
-    sum1_A = 0
-    sum2_A = 0
-    sum3_A = 0
-
-    f = open("SocialBandits.txt", "w+")
-    columnTitleRow = "times, rewardLinREL1FiniteSet, rewardLinREL1L2Ball, rewardRandomBanditFiniteSet\n"
-    f.write(columnTitleRow)
-
-    for i in range(fois):
-        d_A1, d_A2, d_A3 = Difference(P, U0, alpha)
-        sum1_A = sum1_A + d_A1
-        sum2_A = sum2_A + d_A2
-        sum3_A = sum3_A + d_A3
-        row = i + "," + sum1_A + "," + sum2_A + "," + sum3_A + "\n"
-        f.write(row)
-        R_A1.append(sum1_A)
-        R_A2.append(sum2_A)
-        R_A3.append(sum3_A)
-
-        T.append(i + 1)
-    f.close()
-    return R_A1, R_A2, R_A3, T
-
-
-'''
-    plt.subplot(1, 2, 1) 
-    plt.title('Result Analysis_A')        
-    plt.plot(T, R_A1, color='blue', label='r1-r2')
-    plt.plot(T, R_A2, color='green', label=' r1-r3 ')
-    plt.plot(T, R_A3, color='red', label=' r1-r4')
-    plt.legend() # present graph 
-    plt.xlabel('time')
-    plt.ylabel('rewards_difference')
-    plt.show()
-'''
-
-###############################################################################
-# dessin(2000,10,10,0.2)
-
-#################################################################################
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Social Bandit Simulator',
@@ -722,15 +605,13 @@ if __name__ == "__main__":
     P = generateP(args.n)
     U0 = np.random.randn(args.n, args.d)
 
-    if args.test:
-        dessin(args.fois, P, U0, args.alpha)
+    
+    if "LinREL" in args.strategy:
+        sb = BanditClass(P, U0, args.alpha, args.sigma, args.lam, args.delta)
     else:
-        if "LinREL" in args.strategy:
-            sb = BanditClass(P, U0, args.alpha, args.sigma, args.lam, args.delta)
-        else:
-            sb = BanditClass(P, U0, args.alpha, args.sigma, args.lam)
+        sb = BanditClass(P, U0, args.alpha, args.sigma, args.lam)
+        
+    if "Finite" in args.strategy:
+        sb.generateFiniteSet(args.M)
 
-        if "Finite" in args.strategy:
-            sb.generateFiniteSet(args.M)
-
-        sb.run(args.maxiter)
+    sb.run(args.maxiter)
