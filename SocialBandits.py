@@ -430,6 +430,17 @@ class RegressionLinREL1FiniteSet(RegressionLinREL1):
                     V[i, :] = options[j, :]
             totval += optval
         return (self.mat2vec(V), totval)
+
+class RegressionLinREL1L2Ball(RegressionLinREL1):
+    """ LinREL class recommending over a finite set"""
+    
+    def getoptv(self, z):
+        Z = self.vec2mat(z)
+        norms = np.linalg.norm(Z, 2, 1)
+        # logger.debug("Max norm: %f, Min norm: %f, Counts: %d" % (max(norms),min(norms),len(norms)))
+        norms = np.reshape(norms, (self.n, 1))
+        M = np.nan_to_num(1. / np.tile(norms, (1, self.d)))
+        return (self.mat2vec(np.multiply(Z, M)), sum(norms))
     
 class LinREL1L2Ball(LinREL1):
     """ LinREL class recommending over a finite set"""

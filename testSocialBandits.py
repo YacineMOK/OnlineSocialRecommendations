@@ -18,7 +18,7 @@ def testFiniteSocialBandits(P, U0, n, d, H, M, alpha, sigma, lam, delta, scale, 
         figname = 'linrel1finite_n%d_d%d_h%d_m%d_a%f_s%f_d%f_scale%f'\
                   %(n,d,H,M,alpha,sigma,delta,scale)
     else:
-        BanditStrategies = ['LinOptV1', 'LinREL1L2Ball', 'RandomBanditL2Ball']
+        BanditStrategies = ['LinOptV1', 'RegressionLinREL1L2Ball', 'LinREL1L2Ball', 'RandomBanditL2Ball']
         figname = 'linrel1_n%d_d%d_h%d_m%d_a%f_s%f_d%f_scale%f'\
                   %(n,d,H,M,alpha,sigma,delta,scale)
         
