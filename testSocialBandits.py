@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 import numpy as np
@@ -10,11 +11,13 @@ import matplotlib.pyplot as plt
 
 print(matplotlib.backends.backend)
 
-def testFiniteSocialBandits(P, U0, n, d, H, M, alpha, sigma, lam, delta, scale, finiteSet):
+def testFiniteSocialBandits(P, U0, n, d, H, M, alpha, sigma, lam, delta, scale,\
+        finiteSet, stochastic,infinite):
 
     if finiteSet:
         BanditStrategies = ['LinOptV1',  'RegressionLinREL1FiniteSet', \
-                            'LinREL2FiniteSet', 'LinREL1FiniteSet', 'RandomBanditFiniteSet']
+                            'LinREL2FiniteSet', 'LinREL1FiniteSet',\
+                            'RandomBanditFiniteSet']
         figname = 'linrel1finite_n%d_d%d_h%d_m%d_a%f_s%f_d%f_scale%f'\
                   %(n,d,H,M,alpha,sigma,delta,scale)
     else:
@@ -31,6 +34,8 @@ def testFiniteSocialBandits(P, U0, n, d, H, M, alpha, sigma, lam, delta, scale, 
     fst = sb1.getFiniteSet()
 
     for i, strategy in enumerate(BanditStrategies):
+        if stochastic: strategy = 'Stochastic'+strategy
+        elif infinite: strategy = 'Infinite'+strategy
         BanditClass = eval(strategy)
         if "LinREL" in strategy:
             sb = BanditClass(P, U0, alpha, sigma, lam, delta, scale)
@@ -73,6 +78,10 @@ if __name__=="__main__":
     parser.add_argument('--noscreenoutput',dest="screen_output",action='store_false',help='Suppress screen output')
     parser.add_argument("--randseed",type=int,default=42,help="Random seed")
     parser.add_argument('--finite_set', dest='finite_set', action='store_true', help="Finite set solution")
+    parser.add_argument('--stochastic', dest='stochastic', action='store_true',\
+            help='Solution using stochastic choice of profiles')
+    parser.add_argument('--infinite', dest='infinite', action='store_true',\
+            help='Solution using stochastic choice of profiles')
 
     args = parser.parse_args()
 
@@ -83,4 +92,6 @@ if __name__=="__main__":
     U0 = np.random.randn(args.n,args.d)
 
     testFiniteSocialBandits(P, U0, args.n, args.d, args.t, args.M,\
-                            args.alpha, args.sigma, args.lam, args.delta, args.scale, args.finite_set) 
+                            args.alpha, args.sigma, args.lam, args.delta,\
+                            args.scale, args.finite_set, args.stochastic,\
+                            args.infinite) 

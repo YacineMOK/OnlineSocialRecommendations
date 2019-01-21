@@ -1,14 +1,5 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""
-Created on Fri Nov 23 11:46:18 2018
-
-"""
-
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Nov 16 17:46:34 2018
-
-"""
 
 import numpy as np
 from numpy.linalg import solve as solveLinear, inv, matrix_rank, pinv
@@ -570,6 +561,89 @@ class LinREL2FiniteSet(LinREL2):
         return (self.mat2vec(V), totval)
 
 
+### Stochastic Versions of LinRel1 and LinRel2
+""" Stochastically pdate matrix A to the next iteration.
+    Uses formula:
+        A(t+1) = A(t) * β P + α I
+    Asumes that β = 1-α I
+"""
+
+def stochasticUpdate(A,alpha,P,n):
+    print 'this'
+    dice = random.random()
+    if dice<=1-alpha:
+        return np.matmul(A,P)
+    else:
+        return np.identity(n)
+
+class StochasticLinOptV1(LinOptV1):
+    def updateA(self, A):
+        return stochasticUpdate(A,self.alpha,self.P,self.n)
+
+class StochasticRandomBanditFiniteSet(RandomBanditFiniteSet):
+    def updateA(self, A):
+        return stochasticUpdate(A,self.alpha,self.P,self.n)
+
+class StochasticRandomBanditL2Ball(RandomBanditL2Ball):
+    def updateA(self, A):
+        return stochasticUpdate(A,self.alpha,self.P,self.n)
+
+class StochasticRegressionLinREL1FiniteSet(RegressionLinREL1FiniteSet):
+    def updateA(self, A):
+        return stochasticUpdate(A,self.alpha,self.P,self.n)
+
+class StochasticRegressionLinREL1L2Ball(RegressionLinREL1L2Ball):
+    def updateA(self, A):
+        return stochasticUpdate(A,self.alpha,self.P,self.n)
+
+class StochasticLinREL1FiniteSet(LinREL1FiniteSet):
+    def updateA(self, A):
+        return stochasticUpdate(A,self.alpha,self.P,self.n)
+
+class StochasticLinREL1L2Ball(LinREL1L2Ball):
+    def updateA(self, A):
+        return stochasticUpdate(A,self.alpha,self.P,self.n)
+
+class StochasticLinREL2FiniteSet(LinREL2FiniteSet):
+    def updateA(self, A):
+        return stochasticUpdate(A,self.alpha,self.P,self.n)
+
+### Ainf Versions of LinRel1 and LinRel2
+
+class InfiniteLinOptV1(LinOptV1):
+    def updateA(self, A):
+        return self.Ainf
+
+class InfiniteRandomBanditFiniteSet(RandomBanditFiniteSet):
+    def updateA(self, A):
+        return self.Ainf
+
+class InfiniteRandomBanditL2Ball(RandomBanditL2Ball):
+    def updateA(self, A):
+        return self.Ainf
+
+class InfiniteRegressionLinREL1FiniteSet(RegressionLinREL1FiniteSet):
+    def updateA(self, A):
+        return self.Ainf
+
+class InfiniteRegressionLinREL1L2Ball(RegressionLinREL1L2Ball):
+    def updateA(self, A):
+        return self.Ainf
+
+class InfiniteLinREL1FiniteSet(LinREL1FiniteSet):
+    def updateA(self, A):
+        return self.Ainf
+
+class InfiniteLinREL1L2Ball(LinREL1L2Ball):
+    def updateA(self, A):
+        return self.Ainf
+
+class InfiniteLinREL2FiniteSet(LinREL2FiniteSet):
+    def updateA(self, A):
+        return self.Ainf
+
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Social Bandit Simulator',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -592,7 +666,10 @@ if __name__ == "__main__":
     parser.set_defaults(screen_output=True)
     parser.add_argument('--noscreenoutput', dest="screen_output", action='store_false', help='Suppress screen output')
     parser.add_argument("--randseed", type=int, default=42, help="Random seed")
-    parser.add_argument("--test", type=bool, default=False)
+    parser.add_argument("--stochastic", type=bool, default=False,\
+            help="Use stochastic choice of profile")
+    parser.add_argument('--infinite', type=bool, default=False,\
+            help="Use Ainf at every step")
 
     args = parser.parse_args()
 
@@ -608,6 +685,11 @@ if __name__ == "__main__":
     logger.info("Starting with arguments: " + str(args))
     logger.info('Level set to: ' + str(level))
 
+    if args.stochastic==True:
+        args.strategy = "Stochastic"+args.strategy
+    elif args.infinite==True:
+        args.strategy = "Infinite"+args.strategy
+
     BanditClass = eval(args.strategy)
 
     np.random.seed(args.randseed)
@@ -616,7 +698,7 @@ if __name__ == "__main__":
     P = generateP(args.n)
     U0 = np.random.randn(args.n, args.d)
 
-    
+   
     if "LinREL" in args.strategy:
         sb = BanditClass(P, U0, args.alpha, args.sigma, args.lam, args.delta)
     else:
