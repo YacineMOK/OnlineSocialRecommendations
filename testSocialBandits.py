@@ -9,20 +9,19 @@ import matplotlib
 matplotlib.use('Agg',force=True)
 import matplotlib.pyplot as plt
 
-print(matplotlib.backends.backend)
-
-def testFiniteSocialBandits(P, U0, n, d, H, M, alpha, sigma, lam, delta, scale,\
+def testSocialBandits(P, U0, n, d, H, M, alpha, sigma, lam, delta, scale,\
         finiteSet, stochastic,infinite):
 
     if finiteSet:
         BanditStrategies = ['LinOptV1',  'RegressionLinREL1FiniteSet', \
                             'LinREL2FiniteSet', 'LinREL1FiniteSet',\
                             'RandomBanditFiniteSet']
-        figname = 'linrel1finite_n%d_d%d_h%d_m%d_a%f_s%f_d%f_scale%f'\
+        figname = 'finite_syncmp_n%d_d%d_h%d_m%d_a%f_s%f_d%f_scale%f'\
                   %(n,d,H,M,alpha,sigma,delta,scale)
     else:
-        BanditStrategies = ['LinOptV1', 'RegressionLinREL1L2Ball', 'LinREL1L2Ball', 'RandomBanditL2Ball']
-        figname = 'linrel1_n%d_d%d_h%d_m%d_a%f_s%f_d%f_scale%f'\
+        BanditStrategies = ['LinOptV1', 'RegressionLinREL1L2Ball',\
+                            'LinREL1L2Ball', 'LinUCB','RandomBanditL2Ball']
+        figname = 'l2ball_syncmp_n%d_d%d_h%d_m%d_a%f_s%f_d%f_scale%f'\
                   %(n,d,H,M,alpha,sigma,delta,scale)
         
     rewards = np.zeros((H, len(BanditStrategies)))
@@ -36,6 +35,58 @@ def testFiniteSocialBandits(P, U0, n, d, H, M, alpha, sigma, lam, delta, scale,\
     for i, strategy in enumerate(BanditStrategies):
         if stochastic: strategy = 'Stochastic'+strategy
         elif infinite: strategy = 'Infinite'+strategy
+        print '\t%s'%strategy
+        BanditClass = eval(strategy)
+        if "LinREL" in strategy:
+            sb = BanditClass(P, U0, alpha, sigma, lam, delta, scale)
+        else:
+            sb = BanditClass(P, U0, alpha, sigma, lam)
+        sb.setFiniteSet(fst, M)
+            
+        rewards[:,i] = sb.run(H)
+
+        if i > 0:
+            regret = np.cumsum(rewards[:,0] - rewards[:,i])
+            regrets.append({'bandit': strategy, 'regret': regret})
+            plt.plot(regret, label=strategy)
+    
+    plt.xlabel('Horizon (time step)')
+    plt.ylabel('Cumulative Regret')
+    plt.legend(loc='upper left')
+    plt.savefig(figname+'.pdf',format='pdf')
+    #plt.show()
+    
+    df = pd.DataFrame(regrets)
+    df.to_csv('%s.csv'%figname) # it should be renamed
+
+def testSocialBanditsVariants(P, U0, n, d, H, M, alpha, sigma, lam, delta,\
+        scale, finiteSet, stochastic,infinite):
+
+    if finiteSet:
+        BanditStrategies = ['LinOptV1',  'LinREL1FiniteSet',\
+                            'InfiniteLinREL1FiniteSet',\
+                            'StochasticLinREL1FiniteSet']
+        figname = 'linrel1_finite_syncmp_%d_d%d_h%d_m%d_a%f_s%f_d%f_scale%f'\
+                  %(n,d,H,M,alpha,sigma,delta,scale)
+    else:
+        BanditStrategies = ['LinOptV1', 'LinREL1L2Ball',\
+                            'InfiniteLinREL1L2Ball',\
+                            'StochasticLinREL1L2Ball']
+        figname = 'linrel1_l2_syncmp_variants_n%d_d%d_h%d_m%d_a%f_s%f_d%f_scale%f'\
+                  %(n,d,H,M,alpha,sigma,delta,scale)
+        
+    rewards = np.zeros((H, len(BanditStrategies)))
+    regrets = []
+  
+    #fake bandit class for generating the finite set
+    sb1 = SocialBandit(P,U0)
+    sb1.generateFiniteSet(M)
+    fst = sb1.getFiniteSet()
+
+    for i, strategy in enumerate(BanditStrategies):
+        if stochastic: strategy = 'Stochastic'+strategy
+        elif infinite: strategy = 'Infinite'+strategy
+        print '\t%s'%strategy
         BanditClass = eval(strategy)
         if "LinREL" in strategy:
             sb = BanditClass(P, U0, alpha, sigma, lam, delta, scale)
@@ -82,6 +133,8 @@ if __name__=="__main__":
             help='Solution using stochastic choice of profiles')
     parser.add_argument('--infinite', dest='infinite', action='store_true',\
             help='Solution using stochastic choice of profiles')
+    parser.add_argument('--variants', dest='variants', action='store_true',\
+            help='Testing all the variants')
 
     args = parser.parse_args()
 
@@ -91,7 +144,15 @@ if __name__=="__main__":
     P = generateP(args.n)
     U0 = np.random.randn(args.n,args.d)
 
-    testFiniteSocialBandits(P, U0, args.n, args.d, args.t, args.M,\
-                            args.alpha, args.sigma, args.lam, args.delta,\
-                            args.scale, args.finite_set, args.stochastic,\
-                            args.infinite) 
+    if not args.variants: 
+        testSocialBandits(P, U0, args.n, args.d, args.t, args.M,\
+                                args.alpha, args.sigma, args.lam, args.delta,\
+                                args.scale, args.finite_set, args.stochastic,\
+                                args.infinite)
+    else:
+        testSocialBanditsVariants(P, U0, args.n, args.d, args.t, args.M,\
+                                args.alpha, args.sigma, args.lam, args.delta,\
+                                args.scale, args.finite_set, args.stochastic,\
+                                args.infinite)
+ 
+

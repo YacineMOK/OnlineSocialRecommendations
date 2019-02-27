@@ -8,7 +8,9 @@ from scipy.linalg import sqrtm
 from pprint import pformat
 from time import time
 import argparse
+import math
 import random
+import cvxopt
 from numpy import linalg as LA
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -66,16 +68,28 @@ def clearFile(file):
 def generateP(n):
     """Generate an n x n matrix P """
     P = np.random.random((n, n))
-    #print('P=', P)
-    #print('np.sum(P,1)=', np.sum(P, 1))  # 每行求和
     Prowsums = np.reshape(np.sum(P, 1), (n, 1))
-    #print('Prowsums', Prowsums)  # 将原来数据形成一列
     x = [1 / i for i in Prowsums]
-    #print(x)
-    # print('np.tile(Prowsums,(1,n)=',np.tile(Prowsums,(1,n))
     M = 1. / np.tile(Prowsums, (1, n))  # Prowsums复制n列再每个数据求倒数
-    #print(M)
     return np.multiply(P, M)
+
+def generatePFromFile(n,fileName):
+    """Generate an n x n matrix P with 1/n on each cell"""
+    """in order to smooth the probabilities"""
+    P = np.full((n,n),1./n)
+    f = open(fileName)
+    for line in f.readlines():
+        line = line.strip().split()
+        line_len = len(line)
+        val = float(line[2]) if line_len>2 else 1.
+        P[int(line[0])][int(line[1])] = val
+    f.close()
+    #smoothing the probabilities
+    S = P.sum(axis=1,dtype='float')
+    for i in range(n):
+        for j in range(n):
+            P[i][j]=P[i][j]/S[i]
+    return P
 
 ##############################################################################
 # generateP(4)
@@ -289,7 +303,7 @@ class SocialBandit():
             r = self.generateRandomRewards(X)
             
             rews[self.i] = self.expectedTotalRewardViaA(self.A, V) # It should be verified
-            print(rews[self.i])
+            #print(rews[self.i])
             self.Z = self.updateZ(self.Z, X)
             self.XTr = self.updateXTr(self.XTr, X, r)
         
@@ -297,7 +311,7 @@ class SocialBandit():
             udiff = np.linalg.norm(self.u0est - self.u0)
             Adiff = np.linalg.norm(np.reshape(self.A - self.Ainf, self.n * self.n))
             logger.info("It. %d: ||u_0-\hat{u}_0||_2 = %f, ||A-Ainf||= %f" % (self.i, udiff, Adiff))
-            print("It. %d: ||u_0-\hat{u}_0||_2 = %f, ||A-Ainf||= %f" % (self.i, udiff, Adiff))
+            #print("It. %d: ||u_0-\hat{u}_0||_2 = %f, ||A-Ainf||= %f" % (self.i, udiff, Adiff))
 
             self.i += 1
             self.A = self.updateA(self.A)
@@ -506,7 +520,6 @@ class LinOptV1(LinREL1FiniteSet):
         return self.vec2mat(optv)
 '''
 
-
 class LinREL2(SocialBandit):
     def __init__(self, P, U0, alpha=0.2, sigma=0.0001, lam=0.001, delta=0.01, scale=1e-05, warmup=False):
         SocialBandit.__init__(self, P, U0, alpha, sigma, lam)
@@ -541,6 +554,68 @@ class LinREL2(SocialBandit):
         return self.vec2mat(optv)
 
 
+
+
+class LinUCB(SocialBandit):
+    def __init__(self, P, U0, alpha=0.2, sigma=0.0001, lam=0.001, delta=0.01, scale=1e-05, warmup=False):
+        SocialBandit.__init__(self, P, U0, alpha, sigma, lam)
+        self.delta = delta
+        self.warmup = warmup
+        self.scale = scale
+        #building matrix
+        N = self.n*self.d
+        r = []
+        c = []
+        v = []
+        for i in range(self.n):
+            for j in range(self.d):
+                r.append(i)
+                c.append((self.d*(N+2))*i+(N+1)*j)
+                v.append(1.)
+        r.append(self.n)
+        c.append((N+1)*(N+1)-1)
+        v.append(1.)
+        self.G = cvxopt.spmatrix(v,c,r,((N+1)*(N+1),self.n+1))
+        self.c = cvxopt.matrix(np.multiply(-1.,np.ones((self.n+1,1))))
+
+
+    def recommend(self):
+        """ Recommend a V using the LinREL2 algorithm """
+        if self.warmup and self.i < self.d:
+            return SocialBandit.recommend(self)
+        sqrtZ = sqrtm(self.Z)
+        N = self.n * self.d
+        
+        b = max(128 * N * np.log(self.i + 2) * np.log((self.i + 2) ** 2 / self.delta),
+                (8. / 3. * np.log((self.i + 2) ** 2 / self.delta)) ** 2)*self.scale
+        #logger.debug("Optimizing over %d possible u extrema." % len(ext))
+       
+        L = self.generateL(self.A)
+
+        #values for LinUCB
+        B = np.multiply(np.matmul(L.T,self.u0est),0.5)
+        H_0 = np.multiply(b,np.matmul(np.matmul(L.T,self.Z),L))
+
+        #matrix H for SDP relaxation
+        H_up = np.concatenate((H_0,np.array([B]).T),axis=1)
+        H_down = np.concatenate((B,[0]))
+        H = np.concatenate((H_up,np.array([H_down])),axis=0)
+        
+        v, val = self.getoptv(H)
+
+        return self.vec2mat(v)
+
+    def getoptv(self, z):
+        #constructing the matrices
+        H = cvxopt.matrix(np.multiply(-1.,z))
+        #solving the SDP
+        sol = cvxopt.solvers.sdp(c=self.c,Gs=[self.G],hs=[H])
+        Y = sol['zs'][0]
+        ev, evec = LA.eig(Y)
+        y = np.multiply(evec[0].real,math.sqrt(ev[0].real))
+        return y[:-1].real,0
+        #TODO get the final solution from Y when not rank 1
+
 class LinREL2FiniteSet(LinREL2):
     """ LinREL class recommending over a finite set"""
 
@@ -569,7 +644,6 @@ class LinREL2FiniteSet(LinREL2):
 """
 
 def stochasticUpdate(A,alpha,P,n):
-    print 'this'
     dice = random.random()
     if dice<=1-alpha:
         return np.matmul(A,P)
@@ -662,6 +736,7 @@ if __name__ == "__main__":
     parser.add_argument('--maxiter', default=50, type=int, help='Maximum number of iterations')
     parser.add_argument('--debug', default='INFO', help='Verbosity level',
                         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'])
+    parser.add_argument('--networkfile', default='None', help='Edge list file')
     parser.add_argument('--logfile', default='SB.log', help='Log file')
     parser.set_defaults(screen_output=True)
     parser.add_argument('--noscreenoutput', dest="screen_output", action='store_false', help='Suppress screen output')
@@ -695,7 +770,13 @@ if __name__ == "__main__":
     np.random.seed(args.randseed)
     random.seed(args.randseed)
 
-    P = generateP(args.n)
+    if args.networkfile=='None':
+        #generate complete file randomly
+        P = generateP(args.n)
+    else:
+        P = generatePFromFile(args.n,args.networkfile)
+
+
     U0 = np.random.randn(args.n, args.d)
 
    
