@@ -2,11 +2,12 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
+import pandas as pd
 from numpy.linalg import solve as solveLinear, inv, matrix_rank, pinv
 import logging
 from scipy.linalg import sqrtm
 from pprint import pformat
-from time import time
+import time
 import argparse
 import math
 import random
@@ -91,6 +92,33 @@ def generatePFromFile(n,fileName):
             P[i][j]=P[i][j]/S[i]
     return P
 
+def generatePFromNetworkxGraph(n,G):
+    """Generate an n x n matrix P with 1/n on each cell"""
+    """in order to smooth the probabilities"""
+    P = np.full((n,n),1./n)
+    for e in G.edges():
+        P[int(e[0])][int(e[1])] = 1.
+        P[int(e[1])][int(e[0])] = 1.
+    #smoothing the probabilities
+    S = P.sum(axis=1,dtype='float')
+    print(S)
+    for i in range(n):
+        for j in range(n):
+            P[i][j]=P[i][j]/S[i]
+    return P
+
+def getU0FromFile(n,d,fileName):
+    U0s = []
+    f = open(fileName)
+    for line in f.readlines():
+        line = [float(x) for x in line.strip().split()]
+        assert len(line)==d
+        U0s.append(line)
+    f.close()
+    assert len(U0s)==n
+    return np.array(U0s)
+
+
 ##############################################################################
 # generateP(4)
 ###############################################################################
@@ -140,7 +168,7 @@ def testRandomStrategy(n, d, t=5, alpha=0.2, sigma=0.001, lam=0.00001):
 # testRandomStrategy(10, 8, t = 5,alpha = 0.2,sigma=0.001,lam = 0.00001)
 ###############################################################################
 class SocialBandit():
-    def __init__(self, P, U0, alpha=0.2, sigma=0.0001, lam=0.001):
+    def __init__(self, P, U0, alpha=0.2, sigma=0.0001, lam=0.001, scale=0.00001):
         """Initialize social bandit object. Arguments are:
            P: social influence matrix
            alpha: probability α that inherent interests are used
@@ -155,12 +183,24 @@ class SocialBandit():
         self.n, self.d = U0.shape
         self.sigma = sigma
         self.lam = lam
+        self.scale = scale
         I = np.identity(self.n)
         self.Ainf = self.alpha * inv(I - self.beta * P)
 
     def generateFiniteSet(self, M, seed=45):
         rng = np.random.RandomState(seed)
-        self.set = rng.randn(M, self.d)
+        self.set = rng.randn(int(M), self.d)
+        self.M = int(M)
+
+    def readFiniteSetFromFile(self, M, fileName):
+        f = open(fileName)
+        its = []
+        for line in f.readlines():
+            line = [float(x) for x in line.strip().split()]
+            assert len(line)==self.d
+            its.append(line)
+        assert len(its)==M
+        self.set = np.array(its)
         self.M = M
 
     def getFiniteSet(self):
@@ -288,7 +328,7 @@ class SocialBandit():
         return (Z, XTr)
 
     def run(self, t=10):
-        rews = np.zeros(t)
+        rews = []
 
         self.Z, self.XTr = self.initializeRun()
 
@@ -297,12 +337,14 @@ class SocialBandit():
         self.A = self.generateA()
         self.i = 0
         while self.i < t:
+            stat = {}
+            t0 = time.clock()
             V = self.recommend();
 
             X = self.generateX(self.A, V)
             r = self.generateRandomRewards(X)
             
-            rews[self.i] = self.expectedTotalRewardViaA(self.A, V) # It should be verified
+            stat['reward']=self.expectedTotalRewardViaA(self.A, V) # It should be verified
             #print(rews[self.i])
             self.Z = self.updateZ(self.Z, X)
             self.XTr = self.updateXTr(self.XTr, X, r)
@@ -315,7 +357,11 @@ class SocialBandit():
 
             self.i += 1
             self.A = self.updateA(self.A)
-            
+            t1 = time.clock() - t0
+            stat['u0diff']=udiff
+            stat['Adiff']=Adiff
+            stat['time']=t1
+            rews.append(stat)
         return rews
         
 ###############################################################################
@@ -417,7 +463,7 @@ class LinREL1FiniteSet(LinREL1):
             totval += optval
         return (self.mat2vec(V), totval)
 
-class RegressionLinREL1FiniteSet(RegressionLinREL1):
+class RegressionFiniteSet(RegressionLinREL1):
     """ Regression LinREL class recommending over a finite set"""
 
     def getoptv(self, z):
@@ -436,7 +482,7 @@ class RegressionLinREL1FiniteSet(RegressionLinREL1):
             totval += optval
         return (self.mat2vec(V), totval)
 
-class RegressionLinREL1L2Ball(RegressionLinREL1):
+class RegressionL2Ball(RegressionLinREL1):
     """ LinREL class recommending over a finite set"""
     
     def getoptv(self, z):
@@ -461,7 +507,7 @@ class LinREL1L2Ball(LinREL1):
 
 #######################################################################################################
 
-class LinOptV1(LinREL1FiniteSet):
+class LinOptFiniteSet(LinREL1FiniteSet):
     def __init__(self, P, U0, alpha=0.2, sigma=0.0001, lam=0.001, delta=0.01, warmup=False):
         SocialBandit.__init__(self, P, U0, alpha, sigma, lam)
         self.delta = delta
@@ -476,15 +522,29 @@ class LinOptV1(LinREL1FiniteSet):
         u = np.reshape(u0, (1, N))
         L = self.generateL(self.A)
         z = np.matmul(u, L)
-        optval = float("-inf")
         v, val = self.getoptv(z)
-        # logger.debug("Current value: %f" % val)
-        if val > optval:
-            logger.debug("recommend found new maximum at value %f" % val)
-            optval = val
-            optv = v
-            optu = u
-        return self.vec2mat(optv)
+        return self.vec2mat(v)
+
+
+class LinOptL2Ball(LinREL1L2Ball):
+    def __init__(self, P, U0, alpha=0.2, sigma=0.0001, lam=0.001, delta=0.01, warmup=False):
+        SocialBandit.__init__(self, P, U0, alpha, sigma, lam)
+        self.delta = delta
+        self.warmup = warmup
+
+    def recommend(self):
+        """ Recommend a V using the LinREL1 algorithm """
+        if self.warmup and self.i < self.d:
+            return SocialBandit.recommend(self)
+        N = self.n * self.d
+        u0 = self.U0
+        u = np.reshape(u0, (1, N))
+        L = self.generateL(self.A)
+        z = np.matmul(u, L)
+        v, val = self.getoptv(z)
+        return self.vec2mat(v)
+
+
 
     '''
 class LinOptV1(LinREL1FiniteSet):
@@ -557,12 +617,13 @@ class LinREL2(SocialBandit):
 
 
 class LinUCB(SocialBandit):
-    def __init__(self, P, U0, alpha=0.2, sigma=0.0001, lam=0.001, delta=0.01, scale=1e-05, warmup=False):
+    def __init__(self, P, U0, alpha=0.2, sigma=0.0001, lam=0.001,\
+            delta=0.01, scale=1e-05, warmup=False):
         SocialBandit.__init__(self, P, U0, alpha, sigma, lam)
         self.delta = delta
         self.warmup = warmup
         self.scale = scale
-        #building matrix
+        #building matrices
         N = self.n*self.d
         r = []
         c = []
@@ -570,14 +631,15 @@ class LinUCB(SocialBandit):
         for i in range(self.n):
             for j in range(self.d):
                 r.append(i)
-                c.append((self.d*(N+2))*i+(N+1)*j)
+                c.append((self.d*(N+2))*i+(N+2)*j)
                 v.append(1.)
         r.append(self.n)
         c.append((N+1)*(N+1)-1)
         v.append(1.)
         self.G = cvxopt.spmatrix(v,c,r,((N+1)*(N+1),self.n+1))
         self.c = cvxopt.matrix(np.multiply(-1.,np.ones((self.n+1,1))))
-
+        self.G_0 = cvxopt.matrix(np.identity(self.n+1))
+        self.h_0 = cvxopt.matrix(np.zeros((self.n+1,1)))
 
     def recommend(self):
         """ Recommend a V using the LinREL2 algorithm """
@@ -609,10 +671,11 @@ class LinUCB(SocialBandit):
         #constructing the matrices
         H = cvxopt.matrix(np.multiply(-1.,z))
         #solving the SDP
-        sol = cvxopt.solvers.sdp(c=self.c,Gs=[self.G],hs=[H])
+        sol = cvxopt.solvers.sdp(c=self.c,Gl=self.G_0,hl=self.h_0,Gs=[self.G],hs=[H])
         Y = sol['zs'][0]
+        print(LA.matrix_rank(Y)) 
         ev, evec = LA.eig(Y)
-        y = np.multiply(evec[0].real,math.sqrt(ev[0].real))
+        y = np.multiply(evec[0],math.sqrt(ev[0]))
         return y[:-1].real,0
         #TODO get the final solution from Y when not rank 1
 
@@ -650,7 +713,11 @@ def stochasticUpdate(A,alpha,P,n):
     else:
         return np.identity(n)
 
-class StochasticLinOptV1(LinOptV1):
+class StochasticLinOptFiniteSet(LinOptFiniteSet):
+    def updateA(self, A):
+        return stochasticUpdate(A,self.alpha,self.P,self.n)
+
+class StochasticLinOptL2Ball(LinOptL2Ball):
     def updateA(self, A):
         return stochasticUpdate(A,self.alpha,self.P,self.n)
 
@@ -662,11 +729,11 @@ class StochasticRandomBanditL2Ball(RandomBanditL2Ball):
     def updateA(self, A):
         return stochasticUpdate(A,self.alpha,self.P,self.n)
 
-class StochasticRegressionLinREL1FiniteSet(RegressionLinREL1FiniteSet):
+class StochasticRegressionFiniteSet(RegressionFiniteSet):
     def updateA(self, A):
         return stochasticUpdate(A,self.alpha,self.P,self.n)
 
-class StochasticRegressionLinREL1L2Ball(RegressionLinREL1L2Ball):
+class StochasticRegressionL2Ball(RegressionL2Ball):
     def updateA(self, A):
         return stochasticUpdate(A,self.alpha,self.P,self.n)
 
@@ -682,9 +749,17 @@ class StochasticLinREL2FiniteSet(LinREL2FiniteSet):
     def updateA(self, A):
         return stochasticUpdate(A,self.alpha,self.P,self.n)
 
+class StochasticLinUCB(LinUCB):
+    def updateA(self, A):
+        return stochasticUpdate(A,self.alpha,self.P,self.n)
+
 ### Ainf Versions of LinRel1 and LinRel2
 
-class InfiniteLinOptV1(LinOptV1):
+class InfiniteLinOptFiniteSet(LinOptFiniteSet):
+    def updateA(self, A):
+        return self.Ainf
+
+class InfiniteLinOptL2Ball(LinOptL2Ball):
     def updateA(self, A):
         return self.Ainf
 
@@ -696,11 +771,11 @@ class InfiniteRandomBanditL2Ball(RandomBanditL2Ball):
     def updateA(self, A):
         return self.Ainf
 
-class InfiniteRegressionLinREL1FiniteSet(RegressionLinREL1FiniteSet):
+class InfiniteRegressionFiniteSet(RegressionFiniteSet):
     def updateA(self, A):
         return self.Ainf
 
-class InfiniteRegressionLinREL1L2Ball(RegressionLinREL1L2Ball):
+class InfiniteRegressionL2Ball(RegressionL2Ball):
     def updateA(self, A):
         return self.Ainf
 
@@ -716,14 +791,21 @@ class InfiniteLinREL2FiniteSet(LinREL2FiniteSet):
     def updateA(self, A):
         return self.Ainf
 
+class InfiniteLinUCB(LinUCB):
+    def updateA(self, A):
+        return self.Ainf
+
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Social Bandit Simulator',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('strategy', help="Recommendation strategy.",
-                        choices=["RandomBanditL2Ball", "RandomBanditFiniteSet", "LinREL1L2Ball", "LinREL1FiniteSet",
-                                 "LinREL2FiniteSet", "LinUCB"])
+                        choices=["RandomBanditL2Ball", "RandomBanditFiniteSet",\
+                                "LinREL1L2Ball", "LinREL1FiniteSet",\
+                                "LinREL2FiniteSet", "LinUCB",\
+                                "LinOptFiniteSet","LinOptL2Ball",\
+                                "RegressionFiniteSet","RegressionL2Ball"])
     parser.add_argument('--n', default=100, type=int, help="Number of users")
     parser.add_argument('--fois', default=500, type=int, help="Number of trial")
     parser.add_argument('--d', default=10, type=int, help="Number of dimensions")
@@ -736,10 +818,19 @@ if __name__ == "__main__":
     parser.add_argument('--maxiter', default=50, type=int, help='Maximum number of iterations')
     parser.add_argument('--debug', default='INFO', help='Verbosity level',
                         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'])
+    parser.add_argument('--graphtype', default='cmp',\
+            help='Type of synthetic graph', choices=['cmp','erdos-renyi',\
+            'barabasi-albert'])
     parser.add_argument('--networkfile', default='None', help='Edge list file')
+    parser.add_argument('--itemfile', default='None', help='Item list file')
+    parser.add_argument('--outfile', default='None', help='File output')
+    parser.add_argument('--u0file', default='None', help='U0 file')
     parser.add_argument('--logfile', default='SB.log', help='Log file')
     parser.set_defaults(screen_output=True)
-    parser.add_argument('--noscreenoutput', dest="screen_output", action='store_false', help='Suppress screen output')
+    parser.add_argument('--noscreenoutput', dest="screen_output",\
+            action='store_false', help='Suppress screen output')
+    parser.add_argument('--scale', default=1, type=float, help=\
+            'scale of the β(t)  value. Used by LinREL') 
     parser.add_argument("--randseed", type=int, default=42, help="Random seed")
     parser.add_argument("--stochastic", type=bool, default=False,\
             help="Use stochastic choice of profile")
@@ -772,20 +863,45 @@ if __name__ == "__main__":
 
     if args.networkfile=='None':
         #generate complete file randomly
-        P = generateP(args.n)
+        if args.graphtype=='cmp':
+            P = generateP(args.n)
+        else:
+            G = nx.Graph()
+            if args.graphtype=='erdos-renyi':
+                prob = math.log(float(args.n))/\
+                        float(args.n)
+                print(prob)
+                G = nx.fast_gnp_random_graph(args.n,prob)
+            elif args.graphtype=='barabasi-albert':
+                m = int(math.log(float(args.n)))
+                print(m)
+                G = nx.barabasi_albert_graph(args.n,m)
+            P = generatePFromNetworkxGraph(args.n,G)
+
     else:
         P = generatePFromFile(args.n,args.networkfile)
 
 
-    U0 = np.random.randn(args.n, args.d)
+    if args.u0file=='None':
+        U0 = np.random.randn(args.n, args.d)
+    else:
+        U0 = getU0FromFile(args.n, args.d, args.u0file)
 
    
     if "LinREL" in args.strategy:
-        sb = BanditClass(P, U0, args.alpha, args.sigma, args.lam, args.delta)
+        sb = BanditClass(P, U0, args.alpha, args.sigma, args.lam, args.delta,\
+                args.scale)
     else:
-        sb = BanditClass(P, U0, args.alpha, args.sigma, args.lam)
+        sb = BanditClass(P, U0, args.alpha, args.sigma, args.lam,\
+                args.scale)
         
     if "Finite" in args.strategy:
-        sb.generateFiniteSet(args.M)
+        if args.itemfile=='None':
+            sb.generateFiniteSet(args.M)
+        else:
+            sb.readFiniteSetFromFile(args.M,args.itemfile)
 
-    sb.run(args.maxiter)
+    res = sb.run(args.maxiter)
+
+    if args.outfile!='None':
+        pd.DataFrame(res).to_csv(args.outfile)
