@@ -1,5 +1,6 @@
 #!/bin/bash
-PREFIX=./
+PREFIX=./Experiments/
+LOGPREFIX=./Logs/ 
 iter=100
 pyth=python3
 
@@ -22,14 +23,13 @@ do
               fname="${str}_${net}_n${n}_d${d}_M${M}_sigma${sgm}_scale${sc}"
               sbatch --partition=$1 SocialBandits.sbatch $str --n $n --d $d --M $M --sigma ${sgm}\
                 --maxiter ${iter} --scale ${sc} --graphtype ${net}\
-                --outfile "$PREFIX${fname}.csv"
+                --outfile "$PREFIX${fname}.csv" --logfile "$LOGPREFIX${fname}.log" --noscreenoutput
               sbatch --partition=$1 SocialBandits.sbatch $str --n $n --d $d --M $M --sigma ${sgm}\
                 --maxiter ${iter} --scale ${sc} --graphtype ${net}\
-                --stochastic True --outfile "$PREFIX${fname}_stochastic.csv"
+                --stochastic True --outfile "$PREFIX${fname}_stochastic.csv" --logfile "$LOGPREFIX${fname}_stochastic.log" --noscreenoutput
               sbatch --partition=$1 SocialBandits.sbatch $str --n $n --d $d --M $M --sigma ${sgm}\
                 --maxiter ${iter} --scale ${sc} --graphtype ${net}\
-                --infinite True --outfile "$PREFIX${fname}_infinite.csv"
- 
+                --infinite True --outfile "$PREFIX${fname}_infinite.csv" --logfile "$LOGPREFIX${fname}_infinite.log" --noscreenoutput
             done
           done
         done
