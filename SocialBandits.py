@@ -101,7 +101,6 @@ def generatePFromNetworkxGraph(n,G):
         P[int(e[1])][int(e[0])] = 1.
     #smoothing the probabilities
     S = P.sum(axis=1,dtype='float')
-    print(S)
     for i in range(n):
         for j in range(n):
             P[i][j]=P[i][j]/S[i]
@@ -138,9 +137,6 @@ def testExpectedRewards(n, d, alpha=0.2):
 
     r1 = sb.expectedRewardsViaX(X)
     r2 = sb.expectedRewardsViaA(A, V)
-    print(r1)
-    print(r2)
-    print("Reward vector difference is:", np.linalg.norm(r1 - r2))
 
     rtot1 = sb.expectedTotalRewardViaL(L, V)
     rtot2 = sb.expectedTotalRewardViaX(X)
@@ -671,9 +667,9 @@ class LinUCB(SocialBandit):
         #constructing the matrices
         H = cvxopt.matrix(np.multiply(-1.,z))
         #solving the SDP
-        sol = cvxopt.solvers.sdp(c=self.c,Gl=self.G_0,hl=self.h_0,Gs=[self.G],hs=[H])
+        sol = cvxopt.solvers.sdp(c=self.c,Gl=self.G_0,hl=self.h_0,\
+                Gs=[self.G],hs=[H])
         Y = sol['zs'][0]
-        print(LA.matrix_rank(Y)) 
         ev, evec = LA.eig(Y)
         y = np.multiply(evec[0],math.sqrt(ev[0]))
         return y[:-1].real,0
@@ -863,18 +859,16 @@ if __name__ == "__main__":
 
     if args.networkfile=='None':
         #generate complete file randomly
-        if args.graphtype=='cmp':
+        if args.graphtype=='cmp' or args.n<=3:
             P = generateP(args.n)
         else:
             G = nx.Graph()
             if args.graphtype=='erdos-renyi':
                 prob = math.log(float(args.n))/\
                         float(args.n)
-                print(prob)
                 G = nx.fast_gnp_random_graph(args.n,prob)
             elif args.graphtype=='barabasi-albert':
                 m = int(math.log(float(args.n)))
-                print(m)
                 G = nx.barabasi_albert_graph(args.n,m)
             P = generatePFromNetworkxGraph(args.n,G)
 
