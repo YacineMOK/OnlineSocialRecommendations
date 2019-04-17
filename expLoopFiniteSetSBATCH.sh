@@ -4,7 +4,7 @@ LOGPREFIX=./Logs/
 iter=100
 pyth=python3
 
-for n in 2 10 100 500
+for n in 100 500
 do
   for d in 2 5 10 20
   do
@@ -24,12 +24,6 @@ do
               sbatch --partition=$1 SocialBandits.sbatch $str --n $n --d $d --M $M --sigma ${sgm}\
                 --maxiter ${iter} --scale ${sc} --graphtype ${net}\
                 --outfile "$PREFIX${fname}.csv" --logfile "$LOGPREFIX${fname}.log" --noscreenoutput
-              sbatch --partition=$1 SocialBandits.sbatch $str --n $n --d $d --M $M --sigma ${sgm}\
-                --maxiter ${iter} --scale ${sc} --graphtype ${net}\
-                --stochastic True --outfile "$PREFIX${fname}_stochastic.csv" --logfile "$LOGPREFIX${fname}_stochastic.log" --noscreenoutput
-              sbatch --partition=$1 SocialBandits.sbatch $str --n $n --d $d --M $M --sigma ${sgm}\
-                --maxiter ${iter} --scale ${sc} --graphtype ${net}\
-                --infinite True --outfile "$PREFIX${fname}_infinite.csv" --logfile "$LOGPREFIX${fname}_infinite.log" --noscreenoutput
             done
           done
         done
