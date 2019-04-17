@@ -1,7 +1,6 @@
 #!/bin/bash
 PREFIX=./Experiments/
-LOGPREFIX=./Logs/ 
-PREFIX=./
+LOGPREFIX=./Logs/
 iter=100
 pyth=python3
 
