@@ -299,6 +299,10 @@ class SocialBandit():
         """Update Z = Z+XT*X """
         return Z + np.matmul(X.T, X)
 
+    def updateZ(self, Zinv, X, sigma):
+        """Update via Thompson sampling"""
+        return LA.inv(Zinv+np.divide(np.matmul(X.T,X),sigma))
+
     def generateXTr(self, X, r):
         """Generate XT*r """
         return np.matmul(X.T, r)
@@ -437,6 +441,68 @@ class LinREL1(SocialBandit):
                 optu = u
         return self.vec2mat(optv)
 
+class ThompsonSampling(SocialBandit):
+    def __init__(self, P, U0, alpha=0.2, sigma=0.0001, lam=0.001, delta=0.01, scale=1e-05, warmup=False):
+        SocialBandit.__init__(self, P, U0, alpha, sigma, lam)
+        self.scale = scale
+        self.delta = delta
+        self.warmup = warmup
+        self.sigma = sigma
+
+    def recommend(self):
+        """ Recommend a V using the LinREL1 algorithm """
+        if self.warmup and self.i < self.d:
+            return SocialBandit.recommend(self)
+        sqrtZ = sqrtm(self.Z)
+        N = self.n * self.d
+        
+        L = self.generateL(self.A)
+      
+        u = np.reshape(self.u0est, (1, N))
+        z = np.matmul(u, L)
+        optv ,_ = self.getoptv(z)
+      
+        return self.vec2mat(optv)
+
+    def run(self, t=10):
+        rews = []
+
+        self.Z, self.XTr = self.initializeRun()
+
+        self.u0 = self.mat2vec(self.U0)
+        self.u0est = np.random.normal(size=self.n * self.d)
+        self.A = self.generateA()
+        self.i = 0
+        while self.i < t:
+            stat = {}
+            t0 = time.clock()
+            V = self.recommend();
+
+            X = self.generateX(self.A, V)
+            r = self.generateRandomRewards(X)
+            
+            stat['reward']=self.expectedTotalRewardViaA(self.A, V)
+            
+            Zinv = LA.inv(self.Z)
+            s = np.random.normal(0,self.sigma,self.n)
+            self.Z = self.updateZ(Zinv, X, self.sigma)
+            self.XTr = self.updateXTr(self.XTr, X, np.divide(r+s,self.sigma))
+        
+            self.u0est = np.matmul(self.Z,np.matmul(Zinv,self.u0est)+self.XTr)
+
+            udiff = np.linalg.norm(self.u0est - self.u0)
+            Adiff = np.linalg.norm(np.reshape(self.A - self.Ainf, self.n * self.n))
+            logger.info("It. %d: ||u_0-\hat{u}_0||_2 = %f, ||A-Ainf||= %f" % (self.i, udiff, Adiff))
+
+            self.i += 1
+            self.A = self.updateA(self.A)
+            t1 = time.clock() - t0
+            stat['u0diff']=udiff
+            stat['Adiff']=Adiff
+            stat['time']=t1
+            rews.append(stat)
+        return rews
+ 
 
 #####################################################################################
 
@@ -477,6 +543,34 @@ class RegressionFiniteSet(RegressionLinREL1):
                     V[i, :] = options[j, :]
             totval += optval
         return (self.mat2vec(V), totval)
+
+class ThompsonSamplingFiniteSet(ThompsonSampling):
+    
+    def getoptv(self, z):
+        options = self.set
+        Z = self.vec2mat(z)
+        V = np.zeros((self.n, self.d))
+        totval = 0.0
+        for i in range(self.n):
+            optval = float("-inf")
+            for j in range(self.M):
+                val = np.dot(Z[i, :], options[j, :])
+                if val > optval:
+                    logger.debug("getoptv found new maximimum at value %f" % val)
+                    optval = val
+                    V[i, :] = options[j, :]
+            totval += optval
+        return (self.mat2vec(V), totval)
+
+class ThompsonSamplingL2Ball(ThompsonSampling):
+    
+    def getoptv(self, z):
+        Z = self.vec2mat(z)
+        norms = np.linalg.norm(Z, 2, 1)
+        # logger.debug("Max norm: %f, Min norm: %f, Counts: %d" % (max(norms),min(norms),len(norms)))
+        norms = np.reshape(norms, (self.n, 1))
+        M = np.nan_to_num(1. / np.tile(norms, (1, self.d)))
+        return (self.mat2vec(np.multiply(Z, M)), sum(norms)) 
 
 class RegressionL2Ball(RegressionLinREL1):
     """ LinREL class recommending over a finite set"""
@@ -670,9 +764,18 @@ class LinUCB(SocialBandit):
         sol = cvxopt.solvers.sdp(c=self.c,Gl=self.G_0,hl=self.h_0,\
                 Gs=[self.G],hs=[H])
         Y = sol['zs'][0]
-        ev, evec = LA.eig(Y)
-        y = np.multiply(evec[0],math.sqrt(ev[0]))
-        return y[:-1].real,0
+        if LA.matrix_rank(Y)==1:
+            ev, evec = LA.eig(Y)
+            y = np.multiply(evec[0],math.sqrt(ev[0]))
+            return y[:-1].real*y[-1].real,0
+        else:
+            Z = LA.cholesky(Y)
+            s = np.random.normal(size=self.n*self.d+1)
+            sg = np.sign(np.matmul(Z,s))
+            D = np.power(np.diag(np.diag(Y)),0.5)
+            v = np.matmul(D,sg)
+            return v[:-1]*v[-1],0
+
         #TODO get the final solution from Y when not rank 1
 
 class LinREL2FiniteSet(LinREL2):
@@ -801,7 +904,9 @@ if __name__ == "__main__":
                                 "LinREL1L2Ball", "LinREL1FiniteSet",\
                                 "LinREL2FiniteSet", "LinUCB",\
                                 "LinOptFiniteSet","LinOptL2Ball",\
-                                "RegressionFiniteSet","RegressionL2Ball"])
+                                "RegressionFiniteSet","RegressionL2Ball",\
+                                "ThompsonSamplingFiniteSet",\
+                                "ThompsonSamplingL2Ball"])
     parser.add_argument('--n', default=100, type=int, help="Number of users")
     parser.add_argument('--fois', default=500, type=int, help="Number of trial")
     parser.add_argument('--d', default=10, type=int, help="Number of dimensions")
