@@ -338,7 +338,7 @@ class SocialBandit():
         self.i = 0
         while self.i < t:
             stat = {}
-            t0 = time.clock()
+            t0 = time.perf_counter()
             V = self.recommend();
 
             X = self.generateX(self.A, V)
@@ -357,7 +357,7 @@ class SocialBandit():
 
             self.i += 1
             self.A = self.updateA(self.A)
-            t1 = time.clock() - t0
+            t1 = time.perf_counter() - t0
             stat['u0diff']=udiff
             stat['Adiff']=Adiff
             stat['time']=t1
@@ -475,7 +475,7 @@ class ThompsonSampling(SocialBandit):
         self.i = 0
         while self.i < t:
             stat = {}
-            t0 = time.clock()
+            t0 = time.perf_counter()
             V = self.recommend();
 
             X = self.generateX(self.A, V)
@@ -496,7 +496,7 @@ class ThompsonSampling(SocialBandit):
 
             self.i += 1
             self.A = self.updateA(self.A)
-            t1 = time.clock() - t0
+            t1 = time.perf_counter() - t0
             stat['u0diff']=udiff
             stat['Adiff']=Adiff
             stat['time']=t1
