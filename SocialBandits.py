@@ -346,7 +346,7 @@ class SocialBandit():
             
             stat['reward']=self.expectedTotalRewardViaA(self.A, V) # It should be verified
             #print(rews[self.i])
-            self.Z = self.updateZ(self.Z, X)
+            self.Z = self.updateZ(self.Z, X, self.sigma)
             self.XTr = self.updateXTr(self.XTr, X, r)
         
             self.u0est = self.regress(self.Z, self.XTr)
