@@ -1,3 +1,6 @@
+#!/usr/bin/python
+# -*- coding: latin-1 -*-
+
 import torch
 import logging
 import time
@@ -11,10 +14,10 @@ class SocialBandit_TorchF():
     def __init__(self, P, U0, alpha=0.2, sigma=0.0001, lam=0.001, scale=0.00001):
         """Initialize social bandit object. Arguments are:
            P: social influence matrix
-           alpha: probability α that inherent interests are used
+           alpha: probability alpha that inherent interests are used
            U0: inherent interest matrix
-           sigma:  noise standard deviation σ, added when generating rewards
-           lam: regularization parameter λ used in ridge regression
+           sigma:  noise standard deviation sigma, added when generating rewards
+           lam: regularization parameter lambda used in ridge regression
         """
         self.P = P
         self.alpha = alpha
@@ -85,7 +88,10 @@ class SocialBandit_TorchF():
 
     def generateL(self, A):
         """ Generate large matrix L, given by the Kronecker product between A.T and the identity"""
-        return torch.kron(A.T, torch.eye(self.d))
+        # print("Size of A:", A.size())
+        # print("Size of dsds:",torch.eye(self.d).size())
+
+        return torch.kron((A.T).contiguous(), torch.eye(self.d))
 
     def generateX(self, A, V):
         """ Generate matrix X from A and V"""
@@ -165,7 +171,10 @@ class SocialBandit_TorchF():
         return torch.matmul(X.T, X)
 
     def updateZ(self, Z, X):
-        """Update Z = Z+XT*X """
+        """
+        Following the LinREL algorithm:
+            Update Z = Z+XT*X 
+        """
         return Z + torch.matmul(X.T, X)
 
     def updateZ(self, Zinv, X, sigma):
@@ -186,10 +195,15 @@ class SocialBandit_TorchF():
         return torch.linalg.solve(Z, XTr)
 
     def recommend(self):
+        print("Line1")
         gaussian = torch.randn(self.n, self.d)
+        print("Line2")
         norms = torch.linalg.norm(gaussian, 2, 1)
+        print("Line3")
         norms = torch.reshape(norms, (self.n, 1))
+        print("Line4")
         M = 1. / torch.tile(norms, (1, self.d))
+        print("Before return")
         return torch.multiply(gaussian, M)
 
     def initializeRun(self):
@@ -207,21 +221,34 @@ class SocialBandit_TorchF():
         self.A = self.generateA()
         self.i = 0
         while self.i < t:
+
+            print("--- Itteration n°:", self.i)
+
             stat = {}
             t0 = time.perf_counter()
-            V = self.recommend();
-
-            X = self.generateX(self.A, V)
-            r = self.generateRandomRewards(X)
             
+            print("\t--- Start")
+            V = self.recommend();
+            print("Rec")
+            X = self.generateX(self.A, V)
+            print("X")
+            r = self.generateRandomRewards(X)
+            print("random rew")
+
             stat['reward']=self.expectedTotalRewardViaA(self.A, V) # It should be verified
             #print(rews[self.i])
+            
+            
             self.Z = self.updateZ(self.Z, X, self.sigma)
+            print("Z")
             self.XTr = self.updateXTr(self.XTr, X, r)
-        
+            print("XTr")
             self.u0est = self.regress(self.Z, self.XTr)
+            print("U0_hat")
             udiff = torch.linalg.norm(self.u0est - self.u0)
+            print("U diff")
             Adiff = torch.linalg.norm(torch.reshape(self.A - self.Ainf, (self.n * self.n, 1)))
+            print("A Diff")
             logger.info("It. %d: ||u_0-\hat{u}_0||_2 = %f, ||A-Ainf||= %f" % (self.i, udiff, Adiff))
             print("It. %d: ||u_0-\hat{u}_0||_2 = %f, ||A-Ainf||= %f" % (self.i, udiff, Adiff))
 
